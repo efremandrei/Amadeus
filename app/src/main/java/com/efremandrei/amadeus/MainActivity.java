@@ -16,9 +16,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.SystemClock;
+import android.text.method.LinkMovementMethod;
+import android.text.util.Linkify;
 import android.view.WindowInsets;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.List;
@@ -55,9 +58,17 @@ public class MainActivity extends Activity {
     }
 
     void showAbout() {
+        TextView message = new TextView(this);
+        message.setText("Loop-first music creation\n\nVersion 0.1.14 (build 15)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
+        Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
+        message.setLinksClickable(true);
+        message.setMovementMethod(LinkMovementMethod.getInstance());
+        message.setLinkTextColor(Color.rgb(167, 139, 250));
+        message.setPadding(24, 0, 24, 8);
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.13 (build 14)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setView(message)
                 .setPositiveButton("Close", null)
                 .show();
     }
