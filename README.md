@@ -9,6 +9,7 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - First loop establishes the loop length
 - Additional loops are fit to the first loop and played together
 - Mute individual loops, undo the last loop, and toggle light/dark mode
+- Long press any recorded loop to open its actions and delete that layer
 - Session audio is persisted locally between launches
 - Debug APK export
 - Sound Pads mode with three preset banks and eight one-shot buttons per bank

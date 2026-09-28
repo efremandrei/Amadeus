@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.9 (build 10)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.10 (build 11)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it, or long press a track and choose Delete to remove that specific loop.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -87,6 +87,16 @@ public class MainActivity extends Activity {
 
     void showDemoChooser() {
         new AlertDialog.Builder(this).setTitle("Demo tracks").setMessage("Load a ready-made session to explore layers, mute controls, and export.").setItems(DemoLibrary.names(), (dialog, which) -> { loopView.loadDemo(which); Toast.makeText(this, DemoLibrary.get(which).description, Toast.LENGTH_LONG).show(); }).show();
+    }
+
+    void showTrackMenu(int index) {
+        String name = loopView.trackName(index);
+        if (name == null) return;
+        new AlertDialog.Builder(this)
+                .setTitle(name)
+                .setItems(new String[]{"Delete"}, (dialog, which) -> loopView.deleteTrack(index))
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     void showExportChooser() {
@@ -125,6 +135,8 @@ public class MainActivity extends Activity {
         private int lastPad = -1;
         private long lastPadAt;
         private float trackScrollOffset, maxTrackScroll, touchDownX, touchDownY, lastTouchY;
+        private long touchDownAt;
+        private int touchDownTrack = -1;
         private boolean scrolling;
         private final int[] trackColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53) };
         private final int[] padColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53), Color.rgb(251, 191, 36), Color.rgb(129, 140, 248) };
@@ -137,6 +149,8 @@ public class MainActivity extends Activity {
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
         void assignPad(int pad, String sound) { pads.assignPad(pad, sound); configuring = false; invalidate(); }
         boolean hasTracks() { return engine.hasTracks(); }
+        String trackName(int index) { return engine.trackName(index); }
+        void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
@@ -252,11 +266,19 @@ public class MainActivity extends Activity {
         private float dp(float v) { return v * density; }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) { touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; scrolling = false; return true; }
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; touchDownAt = SystemClock.uptimeMillis(); touchDownTrack = -1; scrolling = false;
+                if (!padsMode) {
+                    float contentH = Math.max(dp(1), getHeight() - topInset - bottomInset);
+                    if (touchDownY >= dp(168) && touchDownY < Math.max(dp(168), contentH - dp(190))) touchDownTrack = (int) ((touchDownY - dp(168) + trackScrollOffset) / dp(94));
+                }
+                return true;
+            }
             if (event.getAction() == MotionEvent.ACTION_MOVE) { float currentY = event.getY() - topInset; if (!padsMode && Math.abs(currentY - touchDownY) > dp(8)) { scrolling = true; trackScrollOffset = Math.max(0, Math.min(maxTrackScroll, trackScrollOffset - (currentY - lastTouchY))); lastTouchY = currentY; invalidate(); } return true; }
             if (event.getAction() != MotionEvent.ACTION_UP) return true;
             float x = event.getX(), y = event.getY() - topInset, w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             if (scrolling) { scrolling = false; return true; }
+            if (!padsMode && touchDownTrack >= 0 && SystemClock.uptimeMillis() - touchDownAt >= 550 && Math.abs(y - touchDownY) < dp(16)) { ((MainActivity) getContext()).showTrackMenu(touchDownTrack); touchDownTrack = -1; return true; }
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
             if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }

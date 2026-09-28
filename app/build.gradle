@@ -1,6 +1,6 @@
 plugins { id 'com.android.application' }
 
 android { namespace 'com.efremandrei.amadeus'; compileSdk 35
-    defaultConfig { applicationId 'com.efremandrei.amadeus'; minSdk 26; targetSdk 35; versionCode 10; versionName '0.1.9' }
+    defaultConfig { applicationId 'com.efremandrei.amadeus'; minSdk 26; targetSdk 35; versionCode 11; versionName '0.1.10' }
     buildTypes { release { minifyEnabled false; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' } }
 }

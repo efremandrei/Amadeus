@@ -133,6 +133,27 @@ public final class LoopEngine {
         synchronized (lock) { if (index >= 0 && index < tracks.size()) tracks.get(index).muted = !tracks.get(index).muted; }
     }
 
+    public String trackName(int index) {
+        synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).name : null; }
+    }
+
+    public void deleteTrack(int index) {
+        boolean wasDemo;
+        synchronized (lock) {
+            if (index < 0 || index >= tracks.size()) return;
+            wasDemo = demoMode;
+            tracks.remove(index);
+            if (tracks.isEmpty()) {
+                loopLength = 0;
+                playbackRequested = false;
+                state = State.IDLE;
+                demoMode = false;
+                demoName = "";
+            }
+        }
+        if (!wasDemo) saveSession();
+    }
+
     public void release() {
         recordingRequested = false;
         playbackRequested = false;
