@@ -23,7 +23,8 @@ public final class LoopEngine {
     public enum State { IDLE, RECORDING, PLAYING }
 
     public static final int SAMPLE_RATE = 44100;
-    private static final int MAGIC = 0x414D4442;
+    private static final int MAGIC = 0x414D4443;
+    private static final int EFFECTS_MAGIC = 0x414D4442;
     private static final int LEGACY_MAGIC = 0x414D4441;
     private static final int MAX_TRACKS = 8;
     private final Object lock = new Object();
@@ -53,11 +54,14 @@ public final class LoopEngine {
         public float volume = 1f;
         public float reverb;
         public float delay;
+        public int startSample;
+        public int endSample;
 
         Track(String name, int colorIndex, short[] pcm) {
             this.name = name;
             this.colorIndex = colorIndex;
             this.pcm = pcm;
+            this.endSample = pcm.length;
         }
     }
 
@@ -178,6 +182,38 @@ public final class LoopEngine {
         saveSession();
     }
 
+    public int trackStart(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).startSample : 0; } }
+
+    public int trackEnd(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).endSample : loopLength; } }
+
+    public void setTrackRange(int index, int start, int end) {
+        synchronized (lock) {
+            if (index < 0 || index >= tracks.size()) return;
+            int max = Math.max(1, loopLength);
+            int safeStart = Math.max(0, Math.min(max - 1, start));
+            int safeEnd = Math.max(safeStart + 1, Math.min(max, end));
+            tracks.get(index).startSample = safeStart; tracks.get(index).endSample = safeEnd;
+        }
+        saveSession();
+    }
+
+    public void resetTrackRange(int index) { setTrackRange(index, 0, loopLength); }
+
+    public boolean duplicateTrack(int index) {
+        synchronized (lock) {
+            if (index < 0 || index >= tracks.size() || tracks.size() >= MAX_TRACKS) return false;
+            Track source = tracks.get(index); Track copy = new Track(source.name + " COPY", source.colorIndex + 1, source.pcm.clone());
+            copy.muted = source.muted; copy.volume = source.volume; copy.reverb = source.reverb; copy.delay = source.delay; copy.startSample = source.startSample; copy.endSample = source.endSample;
+            tracks.add(index + 1, copy);
+        }
+        saveSession(); return true;
+    }
+
+    public void moveTrack(int index, int direction) {
+        synchronized (lock) { int target = index + direction; if (index < 0 || index >= tracks.size() || target < 0 || target >= tracks.size()) return; Track track = tracks.remove(index); tracks.add(target, track); if (soloIndex == index) soloIndex = target; else if (soloIndex == target) soloIndex = index; }
+        saveSession();
+    }
+
     public boolean isTrackSolo(int index) { synchronized (lock) { return soloIndex == index; } }
 
     public void toggleSolo(int index) {
@@ -293,23 +329,26 @@ public final class LoopEngine {
     }
 
     private float sampleWithEffects(Track track, int sampleIndex) {
-        float value = track.pcm[sampleIndex] * track.volume;
+        if (sampleIndex < track.startSample || sampleIndex >= track.endSample) return 0f;
+        int localIndex = sampleIndex - track.startSample;
+        if (localIndex < 0 || localIndex >= track.pcm.length) return 0f;
+        float value = track.pcm[localIndex] * track.volume;
         if (track.delay > 0f) {
             int delaySamples = Math.max(1, (int) (SAMPLE_RATE * .25f));
-            value += delayedSample(track, sampleIndex, delaySamples) * track.delay * .32f;
+            value += delayedSample(track, localIndex, delaySamples) * track.delay * .32f;
         }
         if (track.reverb > 0f) {
-            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .07f))) * track.reverb * .18f;
-            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .13f))) * track.reverb * .12f;
-            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .21f))) * track.reverb * .08f;
+            value += delayedSample(track, localIndex, Math.max(1, (int) (SAMPLE_RATE * .07f))) * track.reverb * .18f;
+            value += delayedSample(track, localIndex, Math.max(1, (int) (SAMPLE_RATE * .13f))) * track.reverb * .12f;
+            value += delayedSample(track, localIndex, Math.max(1, (int) (SAMPLE_RATE * .21f))) * track.reverb * .08f;
         }
         return value;
     }
 
     private float delayedSample(Track track, int sampleIndex, int delaySamples) {
         int index = sampleIndex - delaySamples;
-        while (index < 0) index += Math.max(1, loopLength);
-        return track.pcm[index % track.pcm.length] * track.volume;
+        if (index < 0 || index >= track.pcm.length) return 0f;
+        return track.pcm[index] * track.volume;
     }
 
     private static short[] fitToLoop(short[] source, int targetLength) {
@@ -336,6 +375,7 @@ public final class LoopEngine {
                 for (Track track : tracks) {
                     out.writeUTF(track.name); out.writeInt(track.colorIndex); out.writeBoolean(track.muted); out.writeFloat(track.volume); out.writeFloat(track.reverb); out.writeFloat(track.delay);
                     out.writeInt(track.pcm.length); for (short sample : track.pcm) out.writeShort(sample);
+                    out.writeInt(track.startSample); out.writeInt(track.endSample);
                 }
             } catch (Exception ignored) { }
         }
@@ -344,14 +384,21 @@ public final class LoopEngine {
     private void loadSession() {
         try (DataInputStream in = new DataInputStream(new FileInputStream(appContext.getFileStreamPath("session.bin")))) {
             int magic = in.readInt();
-            if (magic != MAGIC && magic != LEGACY_MAGIC) return;
-            boolean hasEffects = magic == MAGIC;
+            if (magic != MAGIC && magic != EFFECTS_MAGIC && magic != LEGACY_MAGIC) return;
+            boolean hasEffects = magic == MAGIC || magic == EFFECTS_MAGIC;
+            boolean hasTimeline = magic == MAGIC;
             int savedLength = in.readInt(); int count = Math.min(MAX_TRACKS, in.readInt());
             for (int i = 0; i < count; i++) {
                 String name = in.readUTF(); int color = in.readInt(); boolean muted = in.readBoolean(); float volume = in.readFloat(); float reverb = hasEffects ? in.readFloat() : 0f; float delay = hasEffects ? in.readFloat() : 0f;
                 int length = in.readInt(); if (length < 1 || length > SAMPLE_RATE * 60 * 10) return;
                 short[] pcm = new short[length]; for (int j = 0; j < length; j++) pcm[j] = in.readShort();
-                Track track = new Track(name, color, pcm); track.muted = muted; track.volume = volume; track.reverb = reverb; track.delay = delay; tracks.add(track);
+                Track track = new Track(name, color, pcm); track.muted = muted; track.volume = volume; track.reverb = reverb; track.delay = delay;
+                if (hasTimeline) {
+                    int start = in.readInt(); int end = in.readInt();
+                    track.startSample = Math.max(0, Math.min(length - 1, start));
+                    track.endSample = Math.max(track.startSample + 1, Math.min(length, end));
+                }
+                tracks.add(track);
             }
             loopLength = savedLength > 0 ? savedLength : (tracks.isEmpty() ? 0 : tracks.get(0).pcm.length);
         } catch (Exception ignored) { }

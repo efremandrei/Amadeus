@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
 
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.16 (build 17)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.17 (build 18)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound or import a WAV/MP3/audio file.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTIMELINE\nOpen Timeline to see the arrangement. Drag a colored block to move it, or drag its left and right handles to trim the active range. Long press a block for Duplicate, Move up/down, Reset trim, and track controls. Playback and export use the edited ranges.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound or import a WAV/MP3/audio file.\n\nEXPORT\nTap Export and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -165,12 +165,16 @@ public class MainActivity extends Activity {
         String solo = loopView.trackSolo(index) ? "Unsolo" : "Solo";
         new AlertDialog.Builder(this)
                 .setTitle(name)
-                .setItems(new String[]{"Delete", mute, solo, "Volume", "Effects"}, (dialog, which) -> {
+                .setItems(new String[]{"Delete", mute, solo, "Volume", "Effects", "Duplicate", "Move up", "Move down", "Reset trim"}, (dialog, which) -> {
                     if (which == 0) loopView.deleteTrack(index);
                     else if (which == 1) loopView.toggleMute(index);
                     else if (which == 2) loopView.toggleSolo(index);
                     else if (which == 3) showTrackVolume(index);
-                    else showTrackEffects(index);
+                    else if (which == 4) showTrackEffects(index);
+                    else if (which == 5) loopView.duplicateTrack(index);
+                    else if (which == 6) loopView.moveTrack(index, -1);
+                    else if (which == 7) loopView.moveTrack(index, 1);
+                    else loopView.resetTrackRange(index);
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
@@ -293,7 +297,7 @@ public class MainActivity extends Activity {
         private final SoundPadEngine pads;
         private final MetronomeEngine metronome;
         private final SharedPreferences prefs;
-        private boolean light, padsMode, configuring;
+        private boolean light, padsMode, timelineMode, configuring;
         private int tempoBpm;
         private boolean metronomeEnabled;
         private int padDisplayMode;
@@ -304,7 +308,8 @@ public class MainActivity extends Activity {
         private float trackScrollOffset, maxTrackScroll, touchDownX, touchDownY, lastTouchY;
         private long touchDownAt;
         private int touchDownTrack = -1;
-        private boolean scrolling;
+        private boolean scrolling, timelineDragging;
+        private int timelineDragMode;
         private final int[] trackColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53) };
         private final int[] padColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53), Color.rgb(251, 191, 36), Color.rgb(129, 140, 248) };
 
@@ -322,11 +327,17 @@ public class MainActivity extends Activity {
         float trackVolume(int index) { return engine.trackVolume(index); }
         float trackReverb(int index) { return engine.trackReverb(index); }
         float trackDelay(int index) { return engine.trackDelay(index); }
+        int trackStart(int index) { return engine.trackStart(index); }
+        int trackEnd(int index) { return engine.trackEnd(index); }
         void toggleMute(int index) { engine.toggleMute(index); invalidate(); }
         void toggleSolo(int index) { engine.toggleSolo(index); invalidate(); }
         void setTrackVolume(int index, float volume) { engine.setTrackVolume(index, volume); invalidate(); }
         void setTrackEffects(int index, float reverb, float delay) { engine.setTrackEffects(index, reverb, delay); invalidate(); }
         void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
+        void setTrackRange(int index, int start, int end) { engine.setTrackRange(index, start, end); invalidate(); }
+        void resetTrackRange(int index) { engine.resetTrackRange(index); invalidate(); }
+        void duplicateTrack(int index) { engine.duplicateTrack(index); invalidate(); }
+        void moveTrack(int index, int direction) { engine.moveTrack(index, direction); invalidate(); }
         void saveProject() { engine.saveProject(); invalidate(); }
         int getTempoBpm() { return tempoBpm; }
         boolean isMetronomeEnabled() { return metronomeEnabled; }
@@ -334,7 +345,7 @@ public class MainActivity extends Activity {
         String projectName() { return engine.getProjectName(); }
         void setProjectName(String name) { engine.setProjectName(name); invalidate(); }
         void importPad(int pad, Uri uri, String displayName) { pads.importPad(pad, uri, displayName); invalidate(); }
-        void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; configuring = false; invalidate(); }
+        void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; timelineMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
             final short[] audio = engine.mixedLoop();
@@ -350,9 +361,9 @@ public class MainActivity extends Activity {
             c.drawColor(bg); c.save(); c.translate(0, topInset); float w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             drawAmbientBackground(c, w, h);
             paint.setColor(text); paint.setTextSize(dp(26)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("Amadeus", dp(24), dp(42), paint);
-            paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); String projectLabel = engine.getProjectName(); if (projectLabel.length() > 24) projectLabel = projectLabel.substring(0, 24) + "…"; c.drawText(padsMode ? "SOUND PADS" : projectLabel, dp(25), dp(64), paint);
-            drawStatusBadge(c, dp(24), dp(76), surface, text, secondary); drawModeTabs(c, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
-            if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
+            paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); String projectLabel = engine.getProjectName(); if (projectLabel.length() > 24) projectLabel = projectLabel.substring(0, 24) + "…"; c.drawText(padsMode ? "SOUND PADS" : timelineMode ? "ARRANGEMENT" : projectLabel, dp(25), dp(64), paint);
+            drawStatusBadge(c, dp(24), dp(76), surface, text, secondary); drawModeTabs(c, w, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
+            if (padsMode) drawPads(c, w, h, surface, text, secondary); else if (timelineMode) drawTimeline(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
             drawUtilityButtons(c, w, h, surface, text);
             c.restore();
             postInvalidateDelayed(engine.getState() == LoopEngine.State.RECORDING || SystemClock.uptimeMillis() - lastPadAt < 600 ? 16 : 80);
@@ -371,12 +382,12 @@ public class MainActivity extends Activity {
             float y = dp(76); drawSmallButton(c, w - dp(220), y, w - dp(126), y + dp(32), surface, text, "HELP"); drawSmallButton(c, w - dp(118), y, w - dp(20), y + dp(32), surface, text, "ABOUT");
         }
 
-        private void drawModeTabs(Canvas c, int surface, int text) { float y = dp(116); drawTab(c, dp(20), y, dp(111), y + dp(32), !padsMode, surface, text, "LOOPS"); drawTab(c, dp(119), y, dp(230), y + dp(32), padsMode, surface, text, "SOUND PADS"); }
+        private void drawModeTabs(Canvas c, float w, int surface, int text) { float y = dp(116), gap = dp(7), left = dp(20), tabW = (w - dp(40) - gap * 2) / 3f; drawTab(c, left, y, left + tabW, y + dp(32), !padsMode && !timelineMode, surface, text, "LOOPS"); drawTab(c, left + tabW + gap, y, left + tabW * 2 + gap, y + dp(32), timelineMode, surface, text, "TIMELINE"); drawTab(c, left + (tabW + gap) * 2, y, w - dp(20), y + dp(32), padsMode, surface, text, "PADS"); }
 
         private void drawLoops(Canvas c, float w, float h, int surface, int text, int secondary) {
             drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, tempoBpm + " BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(168), rowHeight = dp(94), viewportBottom = h - dp(190);
             maxTrackScroll = Math.max(0, top + tracks.size() * rowHeight - viewportBottom); trackScrollOffset = Math.max(0, Math.min(trackScrollOffset, maxTrackScroll));
-            c.save(); c.clipRect(0, top, w, Math.max(top, viewportBottom));
+            c.save(); c.clipRect(0, top - dp(18), w, Math.max(top, viewportBottom));
             if (tracks.isEmpty()) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), top, w - dp(20), top + dp(174)), dp(22), dp(22), paint); paint.setColor(Color.rgb(167, 139, 250)); paint.setTextSize(dp(44)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("◉", dp(42), top + dp(73), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText("Start with a sound", dp(100), top + dp(55), paint); paint.setColor(secondary); paint.setTextSize(dp(14)); c.drawText("Tap Record, make a loop, then layer it.", dp(100), top + dp(83), paint); c.drawText("Your first loop sets the musical grid.", dp(100), top + dp(106), paint); }
             else for (int i = 0; i < tracks.size(); i++) drawTrack(c, tracks.get(i), i, top + i * rowHeight - trackScrollOffset, w, surface, text, secondary);
             c.restore();
@@ -385,6 +396,53 @@ public class MainActivity extends Activity {
             drawButton(c, dp(22), controlsTop, dp(92), controlsTop + dp(54), surface, "↶", "UNDO", text); drawRecord(c, w / 2, controlsTop + dp(29), engine.getState() == LoopEngine.State.RECORDING); drawButton(c, w - dp(114), controlsTop, w - dp(22), controlsTop + dp(54), surface, "+", "ADD LOOP", text);
             paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText("MIC INPUT", dp(24), h - dp(48), paint); paint.setColor(Color.rgb(65, 60, 80)); c.drawRoundRect(new RectF(dp(24), h - dp(36), w - dp(24), h - dp(28)), dp(4), dp(4), paint); paint.setColor(Color.rgb(167, 139, 250)); float levelWidth = (w - dp(48)) * Math.min(1f, engine.getInputLevel() * 2.5f); c.drawRoundRect(new RectF(dp(24), h - dp(36), dp(24) + levelWidth, h - dp(28)), dp(4), dp(4), paint);
         }
+
+        private void drawTimeline(Canvas c, float w, float h, int surface, int text, int secondary) {
+            drawPill(c, dp(20), dp(156), dp(152), dp(190), surface, "ARRANGE");
+            drawPill(c, w - dp(152), dp(156), w - dp(20), dp(190), surface, "DRAG TO EDIT");
+            paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("Move blocks, or drag either edge to trim", dp(24), dp(214), paint);
+            List<LoopEngine.Track> tracks = engine.snapshotTracks();
+            float top = dp(230), rowHeight = dp(82), viewportBottom = h - dp(190), rulerLeft = dp(48), rulerWidth = Math.max(dp(1), w - dp(68));
+            maxTrackScroll = Math.max(0, top + tracks.size() * rowHeight - viewportBottom); trackScrollOffset = Math.max(0, Math.min(trackScrollOffset, maxTrackScroll));
+            c.save(); c.clipRect(0, top - dp(18), w, Math.max(top, viewportBottom));
+            if (tracks.isEmpty()) {
+                paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), top, w - dp(20), top + dp(132)), dp(22), dp(22), paint);
+                paint.setColor(Color.rgb(167, 139, 250)); paint.setTextSize(dp(38)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("✦", dp(40), top + dp(63), paint);
+                paint.setColor(text); paint.setTextSize(dp(19)); c.drawText("Your arrangement is empty", dp(88), top + dp(48), paint);
+                paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText("Record a loop first, then shape it here.", dp(88), top + dp(76), paint);
+            } else {
+                paint.setColor(Color.argb(light ? 45 : 65, 167, 139, 250)); paint.setStrokeWidth(dp(1));
+                for (int i = 0; i <= 16; i++) { float x = rulerLeft + rulerWidth * i / 16f; c.drawLine(x, top, x, viewportBottom, paint); }
+                paint.setColor(secondary); paint.setTextSize(dp(10)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+                for (int i = 0; i < 4; i++) c.drawText("" + (i + 1), rulerLeft + rulerWidth * i / 4f + dp(3), top - dp(8), paint);
+                paint.setTypeface(android.graphics.Typeface.DEFAULT);
+                for (int i = 0; i < tracks.size(); i++) {
+                    float y = top + i * rowHeight - trackScrollOffset;
+                    paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y + dp(4), w - dp(20), y + rowHeight - dp(5)), dp(16), dp(16), paint);
+                    int accent = trackColors[tracks.get(i).colorIndex % trackColors.length];
+                    paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y + dp(4), dp(25), y + rowHeight - dp(5)), dp(3), dp(3), paint);
+                    paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(11)); c.drawText(tracks.get(i).name, dp(29), y + dp(27), paint);
+                    paint.setColor(secondary); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(9)); c.drawText(tracks.get(i).muted ? "MUTED" : "TRACK " + (i + 1), dp(29), y + dp(44), paint);
+                    float blockLeft = timelineBlockLeft(i, w), blockRight = timelineBlockRight(i, w);
+                    RectF block = new RectF(blockLeft, y + dp(17), Math.max(blockLeft + dp(16), blockRight), y + dp(63));
+                    paint.setColor(tracks.get(i).muted ? Color.rgb(75, 72, 87) : Color.argb(light ? 225 : 230, Color.red(accent), Color.green(accent), Color.blue(accent))); c.drawRoundRect(block, dp(12), dp(12), paint);
+                    drawButtonBorder(c, block, dp(12));
+                    paint.setColor(tracks.get(i).muted ? secondary : Color.WHITE); paint.setStrokeWidth(dp(2));
+                    int bars = Math.max(4, Math.min(28, (int) ((block.width() - dp(20)) / dp(7))));
+                    for (int bar = 0; bar < bars; bar++) { float bx = block.left + dp(10) + (block.width() - dp(20)) * bar / Math.max(1, bars - 1); float amp = dp(6 + ((bar * 13 + i * 7) % 12)); c.drawRoundRect(new RectF(bx, block.centerY() - amp, bx + dp(2), block.centerY() + amp), dp(1), dp(1), paint); }
+                    paint.setColor(Color.WHITE); c.drawRoundRect(new RectF(block.left, block.top, block.left + dp(4), block.bottom), dp(2), dp(2), paint); c.drawRoundRect(new RectF(block.right - dp(4), block.top, block.right, block.bottom), dp(2), dp(2), paint);
+                }
+            }
+            c.restore();
+            if (maxTrackScroll > 0) drawTrackScrollbar(c, w, top, viewportBottom, secondary);
+            float controlsTop = h - dp(190); paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : "ARRANGEMENT READY — tap a block for actions", dp(24), controlsTop - dp(18), paint);
+            drawButton(c, dp(22), controlsTop, dp(92), controlsTop + dp(54), surface, "↶", "UNDO", text); drawRecord(c, w / 2, controlsTop + dp(29), engine.getState() == LoopEngine.State.RECORDING); drawButton(c, w - dp(114), controlsTop, w - dp(22), controlsTop + dp(54), surface, "+", "ADD LOOP", text);
+            paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText("MIC INPUT", dp(24), h - dp(48), paint); paint.setColor(Color.rgb(65, 60, 80)); c.drawRoundRect(new RectF(dp(24), h - dp(36), w - dp(24), h - dp(28)), dp(4), dp(4), paint); paint.setColor(Color.rgb(167, 139, 250)); float levelWidth = (w - dp(48)) * Math.min(1f, engine.getInputLevel() * 2.5f); c.drawRoundRect(new RectF(dp(24), h - dp(36), dp(24) + levelWidth, h - dp(28)), dp(4), dp(4), paint);
+        }
+
+        private float timelineBlockLeft(int index, float w) { int length = Math.max(1, engine.getLoopLength()); return dp(48) + Math.max(0, Math.min(length - 1, engine.trackStart(index))) * timelineWidth(w) / length; }
+        private float timelineBlockRight(int index, float w) { int length = Math.max(1, engine.getLoopLength()); return dp(48) + Math.max(1, Math.min(length, engine.trackEnd(index))) * timelineWidth(w) / length; }
+        private float timelineWidth(float w) { return Math.max(dp(1), w - dp(68)); }
 
         private void drawTrackScrollbar(Canvas c, float w, float top, float bottom, int secondary) {
             float area = Math.max(dp(1), bottom - top), thumb = Math.max(dp(28), area * area / (area + maxTrackScroll)), travel = Math.max(0, area - thumb), y = top + (maxTrackScroll == 0 ? 0 : travel * trackScrollOffset / maxTrackScroll); paint.setColor(Color.argb(80, Color.red(secondary), Color.green(secondary), Color.blue(secondary))); c.drawRoundRect(new RectF(w - dp(11), top, w - dp(7), bottom), dp(2), dp(2), paint); paint.setColor(Color.argb(210, Color.red(secondary), Color.green(secondary), Color.blue(secondary))); c.drawRoundRect(new RectF(w - dp(12), y, w - dp(6), y + thumb), dp(3), dp(3), paint);
@@ -460,23 +518,55 @@ public class MainActivity extends Activity {
 
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; touchDownAt = SystemClock.uptimeMillis(); touchDownTrack = -1; scrolling = false;
+                touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; touchDownAt = SystemClock.uptimeMillis(); touchDownTrack = -1; scrolling = false; timelineDragging = false; timelineDragMode = 0;
                 if (!padsMode) {
                     float contentH = Math.max(dp(1), getHeight() - topInset - bottomInset);
-                    if (touchDownY >= dp(168) && touchDownY < Math.max(dp(168), contentH - dp(190))) touchDownTrack = (int) ((touchDownY - dp(168) + trackScrollOffset) / dp(94));
+                    if (timelineMode) {
+                        float top = dp(230), rowHeight = dp(82);
+                        if (touchDownY >= top && touchDownY < Math.max(top, contentH - dp(190))) {
+                            touchDownTrack = (int) ((touchDownY - top + trackScrollOffset) / rowHeight);
+                            if (touchDownTrack >= 0 && touchDownTrack < engine.snapshotTracks().size()) {
+                                float left = timelineBlockLeft(touchDownTrack, getWidth()), right = timelineBlockRight(touchDownTrack, getWidth());
+                                if (event.getX() >= left - dp(12) && event.getX() <= right + dp(12)) {
+                                    timelineDragMode = event.getX() - left <= dp(14) ? 2 : event.getX() - right >= -dp(14) ? 3 : 1;
+                                } else { touchDownTrack = -1; timelineDragMode = 0; }
+                            }
+                        }
+                    } else if (touchDownY >= dp(168) && touchDownY < Math.max(dp(168), contentH - dp(190))) {
+                        touchDownTrack = (int) ((touchDownY - dp(168) + trackScrollOffset) / dp(94));
+                    }
                 }
                 return true;
             }
-            if (event.getAction() == MotionEvent.ACTION_MOVE) { float currentY = event.getY() - topInset; if (!padsMode && Math.abs(currentY - touchDownY) > dp(8)) { scrolling = true; trackScrollOffset = Math.max(0, Math.min(maxTrackScroll, trackScrollOffset - (currentY - lastTouchY))); lastTouchY = currentY; invalidate(); } return true; }
+            if (event.getAction() == MotionEvent.ACTION_MOVE) {
+                float currentX = event.getX(), currentY = event.getY() - topInset, deltaX = currentX - touchDownX, deltaY = currentY - touchDownY;
+                if (timelineMode && touchDownTrack >= 0 && timelineDragMode > 0 && Math.abs(deltaX) > dp(8) && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                    timelineDragging = true;
+                    int length = Math.max(1, engine.getLoopLength()), start = engine.trackStart(touchDownTrack), end = engine.trackEnd(touchDownTrack), delta = Math.round(deltaX * length / timelineWidth(getWidth()));
+                    if (timelineDragMode == 1) { int range = end - start; int moved = Math.max(0, Math.min(length - range, start + delta)); setTrackRange(touchDownTrack, moved, moved + range); }
+                    else if (timelineDragMode == 2) setTrackRange(touchDownTrack, Math.max(0, Math.min(end - 1, start + delta)), end);
+                    else setTrackRange(touchDownTrack, start, Math.max(start + 1, Math.min(length, end + delta)));
+                    invalidate(); return true;
+                }
+                if (!padsMode && Math.abs(currentY - touchDownY) > dp(8)) { scrolling = true; trackScrollOffset = Math.max(0, Math.min(maxTrackScroll, trackScrollOffset - (currentY - lastTouchY))); lastTouchY = currentY; invalidate(); }
+                return true;
+            }
             if (event.getAction() != MotionEvent.ACTION_UP) return true;
             float x = event.getX(), y = event.getY() - topInset, w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             if (scrolling) { scrolling = false; return true; }
-            if (!padsMode && touchDownTrack >= 0 && SystemClock.uptimeMillis() - touchDownAt >= 550 && Math.abs(y - touchDownY) < dp(16)) { ((MainActivity) getContext()).showTrackMenu(touchDownTrack); touchDownTrack = -1; return true; }
+            if (timelineDragging) { timelineDragging = false; timelineDragMode = 0; touchDownTrack = -1; invalidate(); return true; }
+            if (!padsMode && touchDownTrack >= 0 && SystemClock.uptimeMillis() - touchDownAt >= 550 && Math.abs(y - touchDownY) < dp(16)) { ((MainActivity) getContext()).showTrackMenu(touchDownTrack); touchDownTrack = -1; timelineDragMode = 0; return true; }
             if (!padsMode && y < dp(70) && x >= w - dp(164) && x < w - dp(80)) { ((MainActivity) getContext()).showTempoDialog(); return true; }
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (!padsMode && y >= dp(40) && y < dp(70) && x < dp(245)) { ((MainActivity) getContext()).showRenameProject(); return true; }
             if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
-            if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
+            if (y >= dp(110) && y < dp(154)) {
+                float gap = dp(7), left = dp(20), tabW = (w - dp(40) - gap * 2) / 3f;
+                if (x < left + tabW) { padsMode = false; timelineMode = false; }
+                else if (x < left + tabW * 2 + gap) { padsMode = false; timelineMode = true; }
+                else { padsMode = true; timelineMode = false; }
+                configuring = false; trackScrollOffset = 0; invalidate(); return true;
+            }
             if (y >= h - dp(110) && y < h - dp(66)) {
                 if (!padsMode) {
                     float gap = dp(8), left = dp(20), buttonW = (w - dp(40) - gap * 3) / 4f;
@@ -496,6 +586,7 @@ public class MainActivity extends Activity {
                 if (y >= gridTop && y < gridTop + 4 * (cellH + gap)) { int col = (int) ((x - left) / (cellW + gap)), row = (int) ((y - gridTop) / (cellH + gap)); if (col >= 0 && col < 2 && row >= 0 && row < 4) { int pad = row * 2 + col; if (configuring) ((MainActivity) getContext()).showPadChooser(pad); else { pads.playPad(pad); lastPad = pad; lastPadAt = System.currentTimeMillis(); } invalidate(); } }
                 return true;
             }
+            if (timelineMode) return true;
             if (y > h - dp(190) && y < h - dp(70)) { if (Math.abs(x - w / 2) < dp(70) || x > w - dp(130)) { ((MainActivity) getContext()).ensureMicPermission(); return true; } if (x < dp(125)) { engine.clearLastTrack(); invalidate(); return true; } }
             if (y >= dp(168) && y < h - dp(190)) { int index = (int) ((y - dp(168) + trackScrollOffset) / dp(94)); engine.toggleMute(index); invalidate(); }
             return true;
