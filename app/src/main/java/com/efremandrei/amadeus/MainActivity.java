@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.5 (build 6)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.6 (build 7)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -128,19 +128,28 @@ public class MainActivity extends Activity {
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c); int bg = light ? Color.rgb(247, 246, 251) : Color.rgb(16, 16, 22), surface = light ? Color.WHITE : Color.rgb(26, 26, 36), text = light ? Color.rgb(35, 35, 45) : Color.rgb(245, 243, 250), secondary = light ? Color.rgb(104, 101, 116) : Color.rgb(165, 160, 179);
             c.drawColor(bg); c.save(); c.translate(0, topInset); float w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
+            drawAmbientBackground(c, w, h);
             paint.setColor(text); paint.setTextSize(dp(26)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("Amadeus", dp(24), dp(42), paint);
             paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); c.drawText(padsMode ? "SOUND PADS" : "LOOP SESSION 01", dp(25), dp(64), paint);
-            drawModeTabs(c, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
+            drawModeTabs(c, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
             if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
             drawUtilityButtons(c, w, h, surface, text);
             c.restore();
             postInvalidateDelayed(80);
         }
 
-        private void drawModeTabs(Canvas c, int surface, int text) { float y = dp(76); drawTab(c, dp(20), y, dp(111), y + dp(32), !padsMode, surface, text, "LOOPS"); drawTab(c, dp(119), y, dp(230), y + dp(32), padsMode, surface, text, "SOUND PADS"); }
+        private void drawAmbientBackground(Canvas c, float w, float h) {
+            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(light ? 22 : 32, 167, 139, 250)); c.drawCircle(w - dp(18), dp(68), dp(104), paint); paint.setColor(Color.argb(light ? 12 : 20, 45, 212, 191)); c.drawCircle(dp(18), h - dp(120), dp(130), paint); paint.setColor(Color.argb(light ? 16 : 24, 251, 146, 60)); c.drawCircle(w - dp(20), h - dp(210), dp(82), paint);
+        }
+
+        private void drawTopUtilityButtons(Canvas c, float w, int surface, int text) {
+            float y = dp(76); drawSmallButton(c, w - dp(220), y, w - dp(126), y + dp(32), surface, text, "HELP"); drawSmallButton(c, w - dp(118), y, w - dp(20), y + dp(32), surface, text, "ABOUT");
+        }
+
+        private void drawModeTabs(Canvas c, int surface, int text) { float y = dp(116); drawTab(c, dp(20), y, dp(111), y + dp(32), !padsMode, surface, text, "LOOPS"); drawTab(c, dp(119), y, dp(230), y + dp(32), padsMode, surface, text, "SOUND PADS"); }
 
         private void drawLoops(Canvas c, float w, float h, int surface, int text, int secondary) {
-            drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, "96 BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(128), rowHeight = dp(94);
+            drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, "96 BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(168), rowHeight = dp(94);
             if (tracks.isEmpty()) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), top, w - dp(20), top + dp(174)), dp(22), dp(22), paint); paint.setColor(Color.rgb(167, 139, 250)); paint.setTextSize(dp(44)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("◉", dp(42), top + dp(73), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText("Start with a sound", dp(100), top + dp(55), paint); paint.setColor(secondary); paint.setTextSize(dp(14)); c.drawText("Tap Record, make a loop, then layer it.", dp(100), top + dp(83), paint); c.drawText("Your first loop sets the musical grid.", dp(100), top + dp(106), paint); }
             else for (int i = 0; i < tracks.size(); i++) drawTrack(c, tracks.get(i), i, top + i * rowHeight, w, surface, text, secondary);
             float controlsTop = h - dp(150); paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : engine.getState() == LoopEngine.State.PLAYING ? "PLAYING — tap to add a layer" : "READY — tap to add a layer", dp(24), controlsTop - dp(18), paint);
@@ -149,20 +158,18 @@ public class MainActivity extends Activity {
         }
 
         private void drawPads(Canvas c, float w, float h, int surface, int text, int secondary) {
-            float top = dp(126); drawPill(c, dp(20), dp(116), dp(178), dp(150), surface, pads.getActivePresetName()); drawPill(c, w - dp(136), dp(116), w - dp(20), dp(150), configuring ? Color.rgb(167, 139, 250) : surface, configuring ? "TAP A PAD" : "CONFIGURE");
-            paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(configuring ? "PAD DISPLAY" : "Tap a sound to play it instantly", dp(24), dp(174), paint);
-            if (configuring) { drawDisplayChoice(c, dp(20), dp(180), dp(96), dp(212), padDisplayMode == 0, surface, text, "ICONS"); drawDisplayChoice(c, dp(102), dp(180), dp(178), dp(212), padDisplayMode == 1, surface, text, "TEXT"); drawDisplayChoice(c, dp(184), dp(180), dp(260), dp(212), padDisplayMode == 2, surface, text, "BOTH"); }
+            float top = dp(166); drawPill(c, dp(20), dp(156), dp(178), dp(190), surface, pads.getActivePresetName()); drawPill(c, w - dp(136), dp(156), w - dp(20), dp(190), configuring ? Color.rgb(167, 139, 250) : surface, configuring ? "TAP A PAD" : "CONFIGURE");
+            paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(configuring ? "PAD DISPLAY" : "Tap a sound to play it instantly", dp(24), dp(214), paint);
+            if (configuring) { drawDisplayChoice(c, dp(20), dp(220), dp(96), dp(252), padDisplayMode == 0, surface, text, "ICONS"); drawDisplayChoice(c, dp(102), dp(220), dp(178), dp(252), padDisplayMode == 1, surface, text, "TEXT"); drawDisplayChoice(c, dp(184), dp(220), dp(260), dp(252), padDisplayMode == 2, surface, text, "BOTH"); }
             float gap = dp(12), left = dp(20), cellW = (w - dp(40) - gap) / 2f, cellH = dp(86);
-            float gridTop = configuring ? dp(224) : dp(188);
+            float gridTop = configuring ? dp(264) : dp(228);
             for (int i = 0; i < SoundPadEngine.PAD_COUNT; i++) { int col = i % 2, row = i / 2; float x = left + col * (cellW + gap), y = gridTop + row * (cellH + gap); boolean active = i == lastPad && System.currentTimeMillis() - lastPadAt < 220; drawPad(c, x, y, cellW, cellH, i, pads.getSoundForPad(i), active ? Color.WHITE : surface, text, secondary); }
             paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("PRESET BANK  " + (pads.getActivePreset() + 1) + " / " + SoundPadEngine.PRESETS.length + "  •  tap the bank name to switch", dp(24), h - dp(34), paint);
         }
 
         private void drawUtilityButtons(Canvas c, float w, float h, int surface, int text) {
             float y = h - dp(98);
-            drawSmallButton(c, dp(20), y, dp(94), y + dp(32), surface, text, "HELP");
-            drawSmallButton(c, dp(104), y, dp(190), y + dp(32), surface, text, "ABOUT");
-            if (!padsMode) drawSmallButton(c, dp(200), y, dp(292), y + dp(32), surface, text, "EXPORT");
+            if (!padsMode) drawSmallButton(c, dp(20), y, dp(112), y + dp(32), surface, text, "EXPORT");
         }
 
         private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
@@ -204,25 +211,26 @@ public class MainActivity extends Activity {
         private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
         private void drawPill(Canvas c, float l, float t, float r, float b, int color, String label) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(18), dp(18), paint); paint.setColor(Color.rgb(188, 180, 210)); paint.setTextSize(dp(12)); c.drawText(label, l + dp(16), t + dp(21), paint); }
         private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(9)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + dp(13), t + dp(45), paint); }
-        private void drawRecord(Canvas c, float x, float y, boolean recording) { paint.setColor(recording ? Color.rgb(248, 113, 113) : Color.rgb(167, 139, 250)); c.drawCircle(x, y, dp(37), paint); paint.setColor(Color.WHITE); if (recording) c.drawRoundRect(new RectF(x-dp(11), y-dp(11), x+dp(11), y+dp(11)), dp(4), dp(4), paint); else c.drawCircle(x, y, dp(12), paint); }
+        private void drawRecord(Canvas c, float x, float y, boolean recording) { paint.setStyle(Paint.Style.FILL); paint.setColor(recording ? Color.argb(45, 248, 113, 113) : Color.argb(42, 167, 139, 250)); c.drawCircle(x, y, dp(51), paint); paint.setColor(recording ? Color.rgb(248, 113, 113) : Color.rgb(167, 139, 250)); c.drawCircle(x, y, dp(37), paint); paint.setColor(Color.WHITE); if (recording) c.drawRoundRect(new RectF(x-dp(11), y-dp(11), x+dp(11), y+dp(11)), dp(4), dp(4), paint); else c.drawCircle(x, y, dp(12), paint); }
         private float dp(float v) { return v * density; }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() != MotionEvent.ACTION_UP) return true;
             float x = event.getX(), y = event.getY() - topInset, w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
-            if (y >= dp(70) && y < dp(114)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
-            if (y >= h - dp(110) && y < h - dp(66)) { if (x < dp(100)) ((MainActivity) getContext()).showHelp(); else if (x < dp(200)) ((MainActivity) getContext()).showAbout(); else if (!padsMode && x < dp(300)) ((MainActivity) getContext()).showExportChooser(); return true; }
+            if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
+            if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
+            if (y >= h - dp(110) && y < h - dp(66)) { if (!padsMode && x < dp(140)) ((MainActivity) getContext()).showExportChooser(); return true; }
             if (padsMode) {
-                if (y >= dp(110) && y < dp(160) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
-                if (y >= dp(110) && y < dp(160) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }
-                if (configuring && y >= dp(170) && y < dp(220)) { if (x < dp(100)) padDisplayMode = 0; else if (x < dp(182)) padDisplayMode = 1; else if (x < dp(270)) padDisplayMode = 2; prefs.edit().putInt("pad_display_mode", padDisplayMode).apply(); invalidate(); return true; }
-                float gap = dp(12), left = dp(20), cellW = (w - dp(40) - gap) / 2f, cellH = dp(86), gridTop = configuring ? dp(224) : dp(188);
+                if (y >= dp(150) && y < dp(200) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
+                if (y >= dp(150) && y < dp(200) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }
+                if (configuring && y >= dp(210) && y < dp(260)) { if (x < dp(100)) padDisplayMode = 0; else if (x < dp(182)) padDisplayMode = 1; else if (x < dp(270)) padDisplayMode = 2; prefs.edit().putInt("pad_display_mode", padDisplayMode).apply(); invalidate(); return true; }
+                float gap = dp(12), left = dp(20), cellW = (w - dp(40) - gap) / 2f, cellH = dp(86), gridTop = configuring ? dp(264) : dp(228);
                 if (y >= gridTop && y < gridTop + 4 * (cellH + gap)) { int col = (int) ((x - left) / (cellW + gap)), row = (int) ((y - gridTop) / (cellH + gap)); if (col >= 0 && col < 2 && row >= 0 && row < 4) { int pad = row * 2 + col; if (configuring) ((MainActivity) getContext()).showPadChooser(pad); else { pads.playPad(pad); lastPad = pad; lastPadAt = System.currentTimeMillis(); } invalidate(); } }
                 return true;
             }
             if (y > h - dp(190) && y < h - dp(70)) { if (Math.abs(x - w / 2) < dp(70) || x > w - dp(130)) { ((MainActivity) getContext()).ensureMicPermission(); return true; } if (x < dp(125)) { engine.clearLastTrack(); invalidate(); return true; } }
-            if (y >= dp(128) && y < h - dp(190)) { int index = (int) ((y - dp(128)) / dp(94)); engine.toggleMute(index); invalidate(); }
+            if (y >= dp(168) && y < h - dp(190)) { int index = (int) ((y - dp(168)) / dp(94)); engine.toggleMute(index); invalidate(); }
             return true;
         }
     }
