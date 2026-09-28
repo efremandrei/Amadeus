@@ -15,6 +15,7 @@ import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.os.SystemClock;
 import android.view.WindowInsets;
 import android.view.MotionEvent;
 import android.view.View;
@@ -56,7 +57,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.6 (build 7)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.7 (build 8)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -131,15 +132,20 @@ public class MainActivity extends Activity {
             drawAmbientBackground(c, w, h);
             paint.setColor(text); paint.setTextSize(dp(26)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("Amadeus", dp(24), dp(42), paint);
             paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); c.drawText(padsMode ? "SOUND PADS" : "LOOP SESSION 01", dp(25), dp(64), paint);
-            drawModeTabs(c, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
+            drawStatusBadge(c, dp(24), dp(76), surface, text, secondary); drawModeTabs(c, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
             if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
             drawUtilityButtons(c, w, h, surface, text);
             c.restore();
-            postInvalidateDelayed(80);
+            postInvalidateDelayed(engine.getState() == LoopEngine.State.RECORDING || SystemClock.uptimeMillis() - lastPadAt < 600 ? 16 : 80);
         }
 
         private void drawAmbientBackground(Canvas c, float w, float h) {
-            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(light ? 22 : 32, 167, 139, 250)); c.drawCircle(w - dp(18), dp(68), dp(104), paint); paint.setColor(Color.argb(light ? 12 : 20, 45, 212, 191)); c.drawCircle(dp(18), h - dp(120), dp(130), paint); paint.setColor(Color.argb(light ? 16 : 24, 251, 146, 60)); c.drawCircle(w - dp(20), h - dp(210), dp(82), paint);
+            float time = SystemClock.uptimeMillis() / 1000f; paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(light ? 22 : 32, 167, 139, 250)); c.drawCircle(w - dp(18) + (float) Math.sin(time * .45) * dp(8), dp(68), dp(104), paint); paint.setColor(Color.argb(light ? 12 : 20, 45, 212, 191)); c.drawCircle(dp(18), h - dp(120) + (float) Math.cos(time * .35) * dp(10), dp(130), paint); paint.setColor(Color.argb(light ? 16 : 24, 251, 146, 60)); c.drawCircle(w - dp(20), h - dp(210), dp(82), paint);
+        }
+
+        private void drawStatusBadge(Canvas c, float x, float y, int surface, int text, int secondary) {
+            boolean recording = engine.getState() == LoopEngine.State.RECORDING, active = padsMode || engine.getState() == LoopEngine.State.PLAYING; String label = recording ? "RECORDING" : active ? "LIVE" : "READY"; int color = recording ? Color.rgb(248, 113, 113) : active ? Color.rgb(45, 212, 191) : Color.rgb(167, 139, 250);
+            paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + dp(86), y + dp(26)), dp(13), dp(13), paint); paint.setColor(color); c.drawCircle(x + dp(13), y + dp(13), dp(4), paint); paint.setColor(secondary); paint.setTextSize(dp(9)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText(label, x + dp(23), y + dp(17), paint);
         }
 
         private void drawTopUtilityButtons(Canvas c, float w, int surface, int text) {
@@ -163,7 +169,7 @@ public class MainActivity extends Activity {
             if (configuring) { drawDisplayChoice(c, dp(20), dp(220), dp(96), dp(252), padDisplayMode == 0, surface, text, "ICONS"); drawDisplayChoice(c, dp(102), dp(220), dp(178), dp(252), padDisplayMode == 1, surface, text, "TEXT"); drawDisplayChoice(c, dp(184), dp(220), dp(260), dp(252), padDisplayMode == 2, surface, text, "BOTH"); }
             float gap = dp(12), left = dp(20), cellW = (w - dp(40) - gap) / 2f, cellH = dp(86);
             float gridTop = configuring ? dp(264) : dp(228);
-            for (int i = 0; i < SoundPadEngine.PAD_COUNT; i++) { int col = i % 2, row = i / 2; float x = left + col * (cellW + gap), y = gridTop + row * (cellH + gap); boolean active = i == lastPad && System.currentTimeMillis() - lastPadAt < 220; drawPad(c, x, y, cellW, cellH, i, pads.getSoundForPad(i), active ? Color.WHITE : surface, text, secondary); }
+            for (int i = 0; i < SoundPadEngine.PAD_COUNT; i++) { int col = i % 2, row = i / 2; float x = left + col * (cellW + gap), y = gridTop + row * (cellH + gap); boolean active = i == lastPad && SystemClock.uptimeMillis() - lastPadAt < 600; int padSurface = active ? (light ? Color.rgb(245, 240, 255) : Color.rgb(45, 39, 67)) : surface; drawPad(c, x, y, cellW, cellH, i, pads.getSoundForPad(i), padSurface, text, secondary, active); }
             paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("PRESET BANK  " + (pads.getActivePreset() + 1) + " / " + SoundPadEngine.PRESETS.length + "  •  tap the bank name to switch", dp(24), h - dp(34), paint);
         }
 
@@ -179,8 +185,8 @@ public class MainActivity extends Activity {
 
         private void drawDisplayChoice(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
 
-        private void drawPad(Canvas c, float x, float y, float width, float height, int index, String label, int surface, int text, int secondary) {
-            int accent = padColors[index]; paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + width, y + height), dp(20), dp(20), paint); paint.setColor(accent); c.drawRoundRect(new RectF(x, y, x + dp(6), y + height), dp(3), dp(3), paint);
+        private void drawPad(Canvas c, float x, float y, float width, float height, int index, String label, int surface, int text, int secondary, boolean active) {
+            int accent = padColors[index]; if (active) { paint.setColor(Color.argb(light ? 35 : 55, Color.red(accent), Color.green(accent), Color.blue(accent))); c.drawRoundRect(new RectF(x - dp(5), y - dp(5), x + width + dp(5), y + height + dp(5)), dp(24), dp(24), paint); } paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + width, y + height), dp(20), dp(20), paint); paint.setColor(accent); c.drawRoundRect(new RectF(x, y, x + dp(6), y + height), dp(3), dp(3), paint);
             if (padDisplayMode == 0) {
                 paint.setColor(secondary); paint.setTextSize(dp(10)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("" + (index + 1), x + dp(14), y + dp(20), paint); drawSoundIcon(c, x + width / 2f, y + height / 2f + dp(4), label, accent);
             } else if (padDisplayMode == 1) {
@@ -211,7 +217,7 @@ public class MainActivity extends Activity {
         private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
         private void drawPill(Canvas c, float l, float t, float r, float b, int color, String label) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(18), dp(18), paint); paint.setColor(Color.rgb(188, 180, 210)); paint.setTextSize(dp(12)); c.drawText(label, l + dp(16), t + dp(21), paint); }
         private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(9)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + dp(13), t + dp(45), paint); }
-        private void drawRecord(Canvas c, float x, float y, boolean recording) { paint.setStyle(Paint.Style.FILL); paint.setColor(recording ? Color.argb(45, 248, 113, 113) : Color.argb(42, 167, 139, 250)); c.drawCircle(x, y, dp(51), paint); paint.setColor(recording ? Color.rgb(248, 113, 113) : Color.rgb(167, 139, 250)); c.drawCircle(x, y, dp(37), paint); paint.setColor(Color.WHITE); if (recording) c.drawRoundRect(new RectF(x-dp(11), y-dp(11), x+dp(11), y+dp(11)), dp(4), dp(4), paint); else c.drawCircle(x, y, dp(12), paint); }
+        private void drawRecord(Canvas c, float x, float y, boolean recording) { float pulse = 1f + (float) Math.sin(SystemClock.uptimeMillis() / 180.0) * .06f; paint.setStyle(Paint.Style.FILL); paint.setColor(recording ? Color.argb(48, 248, 113, 113) : Color.argb(42, 167, 139, 250)); c.drawCircle(x, y, dp(51) * pulse, paint); paint.setColor(recording ? Color.rgb(248, 113, 113) : Color.rgb(167, 139, 250)); c.drawCircle(x, y, dp(37), paint); paint.setColor(Color.WHITE); if (recording) c.drawRoundRect(new RectF(x-dp(11), y-dp(11), x+dp(11), y+dp(11)), dp(4), dp(4), paint); else c.drawCircle(x, y, dp(12), paint); }
         private float dp(float v) { return v * density; }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
