@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Canvas;
@@ -11,6 +12,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.MotionEvent;
 import android.view.View;
@@ -20,7 +22,9 @@ import java.util.List;
 
 public class MainActivity extends Activity {
     private static final int MIC_REQUEST = 42;
+    private static final int EXPORT_REQUEST = 90;
     private LoopStationView loopView;
+    private int pendingExportFormat = ExportManager.FORMAT_WAV;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,7 +44,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.3 (build 4)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.4 (build 5)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -48,15 +52,31 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setPositiveButton("Got it", null)
                 .show();
+    }
+
+    void showExportChooser() {
+        if (!loopView.hasTracks()) { Toast.makeText(this, "Record a loop before exporting", Toast.LENGTH_SHORT).show(); return; }
+        String[] formats = {"WAV — uncompressed", "M4A — compact AAC", "MP3 — compatible"};
+        new AlertDialog.Builder(this).setTitle("Export creation").setItems(formats, (dialog, which) -> beginExport(which)).show();
+    }
+
+    private void beginExport(int format) {
+        pendingExportFormat = format;
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType(ExportManager.mimeType(format)); intent.putExtra(Intent.EXTRA_TITLE, "amadeus-loop." + ExportManager.extension(format)); startActivityForResult(intent, EXPORT_REQUEST);
     }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == MIC_REQUEST && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) loopView.toggleRecording();
         else Toast.makeText(this, "Microphone access is needed to record loops", Toast.LENGTH_SHORT).show();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == EXPORT_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) loopView.exportToUri(data.getData(), pendingExportFormat);
     }
 
     @Override protected void onDestroy() { if (loopView != null) loopView.release(); super.onDestroy(); }
@@ -81,6 +101,14 @@ public class MainActivity extends Activity {
 
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
         void assignPad(int pad, String sound) { pads.assignPad(pad, sound); configuring = false; invalidate(); }
+        boolean hasTracks() { return engine.hasTracks(); }
+        void exportToUri(final Uri destination, final int format) {
+            final short[] audio = engine.mixedLoop();
+            new Thread(() -> {
+                try { ExportManager.export(getContext(), destination, format, audio); ((Activity) getContext()).runOnUiThread(() -> Toast.makeText(getContext(), "Exported ." + ExportManager.extension(format), Toast.LENGTH_LONG).show()); }
+                catch (Exception error) { ((Activity) getContext()).runOnUiThread(() -> Toast.makeText(getContext(), "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show()); }
+            }, "Amadeus-export").start();
+        }
         void release() { engine.release(); }
 
         @Override protected void onDraw(Canvas c) {
@@ -119,6 +147,7 @@ public class MainActivity extends Activity {
             float y = h - dp(98);
             drawSmallButton(c, dp(20), y, dp(94), y + dp(32), surface, text, "HELP");
             drawSmallButton(c, dp(104), y, dp(190), y + dp(32), surface, text, "ABOUT");
+            if (!padsMode) drawSmallButton(c, dp(200), y, dp(292), y + dp(32), surface, text, "EXPORT");
         }
 
         private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
@@ -168,7 +197,7 @@ public class MainActivity extends Activity {
             float x = event.getX(), y = event.getY(), w = getWidth(), h = getHeight();
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(114)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
-            if (y >= h - dp(110) && y < h - dp(66)) { if (x < dp(100)) ((MainActivity) getContext()).showHelp(); else if (x < dp(200)) ((MainActivity) getContext()).showAbout(); return true; }
+            if (y >= h - dp(110) && y < h - dp(66)) { if (x < dp(100)) ((MainActivity) getContext()).showHelp(); else if (x < dp(200)) ((MainActivity) getContext()).showAbout(); else if (!padsMode && x < dp(300)) ((MainActivity) getContext()).showExportChooser(); return true; }
             if (padsMode) {
                 if (y >= dp(110) && y < dp(160) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
                 if (y >= dp(110) && y < dp(160) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }

@@ -65,6 +65,15 @@ public final class LoopEngine {
 
     public boolean hasTracks() { synchronized (lock) { return !tracks.isEmpty(); } }
 
+    public short[] mixedLoop() {
+        synchronized (lock) {
+            if (loopLength <= 0 || tracks.isEmpty()) return new short[0];
+            short[] mix = new short[loopLength];
+            for (int i = 0; i < loopLength; i++) { float sum = 0f; for (Track track : tracks) if (!track.muted && i < track.pcm.length) sum += track.pcm[i] * track.volume; mix[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum)); }
+            return mix;
+        }
+    }
+
     public void startRecording() {
         if (state == State.RECORDING || tracks.size() >= MAX_TRACKS) return;
         capture.clear();
