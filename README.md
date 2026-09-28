@@ -26,6 +26,7 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Branded waveform-loop launcher icon and splash screen
 - Exit action with confirmation from the bottom action bar
 - Separated bottom action bands with larger, centered control labels
+- Thin purple borders on dark-mode buttons for clearer affordances
 
 ## Build
 
