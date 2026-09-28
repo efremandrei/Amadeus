@@ -16,6 +16,7 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Help and About dialogs with workflow guidance and app information
 - Informative sound icons with configurable pad display: icons, text, or both
 - Export the mixed loop through Android's file picker as WAV, M4A/AAC, or MP3 when a device encoder is available
+- Safe system-bar spacing for status and navigation areas
 
 ## Build
 

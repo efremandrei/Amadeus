@@ -14,6 +14,8 @@ import android.graphics.Path;
 import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
+import android.view.WindowInsets;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Toast;
@@ -29,7 +31,17 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.rgb(16, 16, 22)); getWindow().setNavigationBarColor(Color.rgb(16, 16, 22));
-        loopView = new LoopStationView(this); setContentView(loopView);
+        loopView = new LoopStationView(this);
+        loopView.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                loopView.setSystemBarInsets(bars.top, bars.bottom);
+            } else {
+                loopView.setSystemBarInsets(insets.getSystemWindowInsetTop(), insets.getSystemWindowInsetBottom());
+            }
+            return insets;
+        });
+        setContentView(loopView); loopView.requestApplyInsets();
     }
 
     void ensureMicPermission() {
@@ -44,7 +56,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.4 (build 5)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.5 (build 6)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -89,6 +101,7 @@ public class MainActivity extends Activity {
         private boolean light, padsMode, configuring;
         private int padDisplayMode;
         private float density;
+        private int topInset, bottomInset;
         private int lastPad = -1;
         private long lastPadAt;
         private final int[] trackColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53) };
@@ -102,6 +115,7 @@ public class MainActivity extends Activity {
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
         void assignPad(int pad, String sound) { pads.assignPad(pad, sound); configuring = false; invalidate(); }
         boolean hasTracks() { return engine.hasTracks(); }
+        void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
             final short[] audio = engine.mixedLoop();
             new Thread(() -> {
@@ -113,12 +127,13 @@ public class MainActivity extends Activity {
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c); int bg = light ? Color.rgb(247, 246, 251) : Color.rgb(16, 16, 22), surface = light ? Color.WHITE : Color.rgb(26, 26, 36), text = light ? Color.rgb(35, 35, 45) : Color.rgb(245, 243, 250), secondary = light ? Color.rgb(104, 101, 116) : Color.rgb(165, 160, 179);
-            c.drawColor(bg); float w = getWidth(), h = getHeight();
+            c.drawColor(bg); c.save(); c.translate(0, topInset); float w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             paint.setColor(text); paint.setTextSize(dp(26)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("Amadeus", dp(24), dp(42), paint);
             paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); c.drawText(padsMode ? "SOUND PADS" : "LOOP SESSION 01", dp(25), dp(64), paint);
             drawModeTabs(c, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
             if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
             drawUtilityButtons(c, w, h, surface, text);
+            c.restore();
             postInvalidateDelayed(80);
         }
 
@@ -194,7 +209,7 @@ public class MainActivity extends Activity {
 
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() != MotionEvent.ACTION_UP) return true;
-            float x = event.getX(), y = event.getY(), w = getWidth(), h = getHeight();
+            float x = event.getX(), y = event.getY() - topInset, w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(114)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
             if (y >= h - dp(110) && y < h - dp(66)) { if (x < dp(100)) ((MainActivity) getContext()).showHelp(); else if (x < dp(200)) ((MainActivity) getContext()).showAbout(); else if (!padsMode && x < dp(300)) ((MainActivity) getContext()).showExportChooser(); return true; }
