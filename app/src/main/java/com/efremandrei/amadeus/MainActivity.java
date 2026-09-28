@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.7 (build 8)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.8 (build 9)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -66,8 +66,27 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
                 .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
+    }
+
+    void showTutorialChooser() {
+        new AlertDialog.Builder(this).setTitle("Choose a tutorial").setItems(new String[]{"Make your first loop", "Build with Sound Pads"}, (dialog, which) -> showTutorialStep(which, 0)).show();
+    }
+
+    private void showTutorialStep(final int tutorial, final int step) {
+        final String[][] titles = {{"1  Make a sound", "2  Close the loop", "3  Build and share"}, {"1  Open Sound Pads", "2  Play a preset", "3  Make it yours"}};
+        final String[][] messages = {{"Open Loops and tap the big purple Record button. Allow microphone access, then clap, hum, or play an instrument.", "Tap Record again when your phrase ends. Amadeus repeats it automatically. Use Add Loop to layer another sound, Undo to remove the last layer, and tap a track to mute it.", "When your idea is ready, tap Export and choose WAV, M4A, or MP3. Headphones help prevent the microphone from hearing the speaker."}, {"Tap Sound Pads at the top. Each pad is a playable one-shot sound, designed for quick ideas and live accents.", "Tap a pad to hear it. Tap the preset bank name to switch between Starter Kit, Percussion, and Synth Sketch.", "Tap Configure to assign a different sound and choose Icons, Text, or Both. Your choices are saved automatically."}};
+        AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle(titles[tutorial][step]).setMessage(messages[tutorial][step]);
+        if (step > 0) builder.setNegativeButton("Back", (dialog, which) -> showTutorialStep(tutorial, step - 1));
+        if (step < titles[tutorial].length - 1) builder.setPositiveButton("Next", (dialog, which) -> showTutorialStep(tutorial, step + 1));
+        else builder.setPositiveButton("Done", null);
+        builder.show();
+    }
+
+    void showDemoChooser() {
+        new AlertDialog.Builder(this).setTitle("Demo tracks").setMessage("Load a ready-made session to explore layers, mute controls, and export.").setItems(DemoLibrary.names(), (dialog, which) -> { loopView.loadDemo(which); Toast.makeText(this, DemoLibrary.get(which).description, Toast.LENGTH_LONG).show(); }).show();
     }
 
     void showExportChooser() {
@@ -116,6 +135,7 @@ public class MainActivity extends Activity {
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
         void assignPad(int pad, String sound) { pads.assignPad(pad, sound); configuring = false; invalidate(); }
         boolean hasTracks() { return engine.hasTracks(); }
+        void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); padsMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
             final short[] audio = engine.mixedLoop();
@@ -144,7 +164,7 @@ public class MainActivity extends Activity {
         }
 
         private void drawStatusBadge(Canvas c, float x, float y, int surface, int text, int secondary) {
-            boolean recording = engine.getState() == LoopEngine.State.RECORDING, active = padsMode || engine.getState() == LoopEngine.State.PLAYING; String label = recording ? "RECORDING" : active ? "LIVE" : "READY"; int color = recording ? Color.rgb(248, 113, 113) : active ? Color.rgb(45, 212, 191) : Color.rgb(167, 139, 250);
+            boolean recording = engine.getState() == LoopEngine.State.RECORDING, active = padsMode || engine.getState() == LoopEngine.State.PLAYING; String label = recording ? "RECORDING" : engine.isDemoMode() ? "DEMO" : active ? "LIVE" : "READY"; int color = recording ? Color.rgb(248, 113, 113) : engine.isDemoMode() ? Color.rgb(251, 146, 60) : active ? Color.rgb(45, 212, 191) : Color.rgb(167, 139, 250);
             paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + dp(86), y + dp(26)), dp(13), dp(13), paint); paint.setColor(color); c.drawCircle(x + dp(13), y + dp(13), dp(4), paint); paint.setColor(secondary); paint.setTextSize(dp(9)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText(label, x + dp(23), y + dp(17), paint);
         }
 
@@ -158,7 +178,7 @@ public class MainActivity extends Activity {
             drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, "96 BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(168), rowHeight = dp(94);
             if (tracks.isEmpty()) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), top, w - dp(20), top + dp(174)), dp(22), dp(22), paint); paint.setColor(Color.rgb(167, 139, 250)); paint.setTextSize(dp(44)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("◉", dp(42), top + dp(73), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText("Start with a sound", dp(100), top + dp(55), paint); paint.setColor(secondary); paint.setTextSize(dp(14)); c.drawText("Tap Record, make a loop, then layer it.", dp(100), top + dp(83), paint); c.drawText("Your first loop sets the musical grid.", dp(100), top + dp(106), paint); }
             else for (int i = 0; i < tracks.size(); i++) drawTrack(c, tracks.get(i), i, top + i * rowHeight, w, surface, text, secondary);
-            float controlsTop = h - dp(150); paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : engine.getState() == LoopEngine.State.PLAYING ? "PLAYING — tap to add a layer" : "READY — tap to add a layer", dp(24), controlsTop - dp(18), paint);
+            float controlsTop = h - dp(150); paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : engine.isDemoMode() ? "DEMO — " + engine.getDemoName() + " • tap to add a layer" : engine.getState() == LoopEngine.State.PLAYING ? "PLAYING — tap to add a layer" : "READY — tap to add a layer", dp(24), controlsTop - dp(18), paint);
             drawButton(c, dp(22), controlsTop, dp(92), controlsTop + dp(54), surface, "↶", "UNDO", text); drawRecord(c, w / 2, controlsTop + dp(29), engine.getState() == LoopEngine.State.RECORDING); drawButton(c, w - dp(114), controlsTop, w - dp(22), controlsTop + dp(54), surface, "+", "ADD LOOP", text);
             paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("MIC INPUT", dp(24), h - dp(48), paint); paint.setColor(Color.rgb(65, 60, 80)); c.drawRoundRect(new RectF(dp(24), h - dp(36), w - dp(24), h - dp(28)), dp(4), dp(4), paint); paint.setColor(Color.rgb(167, 139, 250)); float levelWidth = (w - dp(48)) * Math.min(1f, engine.getInputLevel() * 2.5f); c.drawRoundRect(new RectF(dp(24), h - dp(36), dp(24) + levelWidth, h - dp(28)), dp(4), dp(4), paint);
         }
@@ -175,7 +195,7 @@ public class MainActivity extends Activity {
 
         private void drawUtilityButtons(Canvas c, float w, float h, int surface, int text) {
             float y = h - dp(98);
-            if (!padsMode) drawSmallButton(c, dp(20), y, dp(112), y + dp(32), surface, text, "EXPORT");
+            if (!padsMode) { drawSmallButton(c, dp(20), y, dp(132), y + dp(32), surface, text, "DEMOS"); drawSmallButton(c, dp(144), y, dp(236), y + dp(32), surface, text, "EXPORT"); }
         }
 
         private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
@@ -226,7 +246,7 @@ public class MainActivity extends Activity {
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
             if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
-            if (y >= h - dp(110) && y < h - dp(66)) { if (!padsMode && x < dp(140)) ((MainActivity) getContext()).showExportChooser(); return true; }
+            if (y >= h - dp(110) && y < h - dp(66)) { if (!padsMode && x < dp(140)) ((MainActivity) getContext()).showDemoChooser(); else if (!padsMode && x < dp(260)) ((MainActivity) getContext()).showExportChooser(); return true; }
             if (padsMode) {
                 if (y >= dp(150) && y < dp(200) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
                 if (y >= dp(150) && y < dp(200) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }

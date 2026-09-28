@@ -35,6 +35,8 @@ public final class LoopEngine {
     private final List<Short> capture = Collections.synchronizedList(new ArrayList<Short>());
     private int loopLength;
     private final Context appContext;
+    private boolean demoMode;
+    private String demoName = "";
 
     public static final class Track {
         public final String name;
@@ -58,12 +60,23 @@ public final class LoopEngine {
     public State getState() { return state; }
     public float getInputLevel() { return inputLevel; }
     public int getLoopLength() { return loopLength; }
+    public boolean isDemoMode() { return demoMode; }
+    public String getDemoName() { return demoName; }
 
     public List<Track> snapshotTracks() {
         synchronized (lock) { return new ArrayList<>(tracks); }
     }
 
     public boolean hasTracks() { synchronized (lock) { return !tracks.isEmpty(); } }
+
+    public void loadDemo(DemoLibrary.Demo demo) {
+        synchronized (lock) {
+            tracks.clear(); loopLength = demo.loopLength; demoMode = true; demoName = demo.name;
+            for (DemoLibrary.Layer layer : demo.layers) tracks.add(new Track(layer.name, layer.colorIndex, layer.pcm));
+            state = State.PLAYING;
+        }
+        ensurePlayback();
+    }
 
     public short[] mixedLoop() {
         synchronized (lock) {
@@ -94,9 +107,11 @@ public final class LoopEngine {
         for (int i = 0; i < copy.size(); i++) take[i] = copy.get(i);
         synchronized (lock) {
             if (tracks.isEmpty()) {
+                demoMode = false; demoName = "";
                 loopLength = take.length;
                 tracks.add(new Track("LOOP 1", 0, take));
             } else if (tracks.size() < MAX_TRACKS) {
+                demoMode = false; demoName = "";
                 tracks.add(new Track("LOOP " + (tracks.size() + 1), tracks.size() % 6, fitToLoop(take, loopLength)));
             }
         }
@@ -108,6 +123,7 @@ public final class LoopEngine {
     public void clearLastTrack() {
         synchronized (lock) {
             if (!tracks.isEmpty()) tracks.remove(tracks.size() - 1);
+            if (tracks.isEmpty()) { demoMode = false; demoName = ""; }
             if (tracks.isEmpty()) { loopLength = 0; playbackRequested = false; state = State.IDLE; }
         }
         saveSession();
@@ -206,6 +222,7 @@ public final class LoopEngine {
 
     private void saveSession() {
         synchronized (lock) {
+            if (demoMode) return;
             try (DataOutputStream out = new DataOutputStream(new FileOutputStream(appContext.getFileStreamPath("session.bin")))) {
                 out.writeInt(0x414D4441);
                 out.writeInt(loopLength);
