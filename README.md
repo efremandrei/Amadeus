@@ -14,6 +14,7 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Sound Pads mode with three preset banks and eight one-shot buttons per bank
 - Configure mode for assigning each pad from the built-in sound library
 - Help and About dialogs with workflow guidance and app information
+- Informative sound icons with configurable pad display: icons, text, or both
 
 ## Build
 
