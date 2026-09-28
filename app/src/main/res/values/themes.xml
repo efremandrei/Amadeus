@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.Amadeus" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#101016</item>
+        <item name="android:navigationBarColor">#101016</item>
+        <item name="android:colorAccent">#A78BFA</item>
+    </style>
+</resources>
