@@ -34,8 +34,10 @@ import java.util.List;
 public class MainActivity extends Activity {
     private static final int MIC_REQUEST = 42;
     private static final int EXPORT_REQUEST = 90;
+    private static final int IMPORT_PAD_REQUEST = 91;
     private LoopStationView loopView;
     private int pendingExportFormat = ExportManager.FORMAT_WAV;
+    private int pendingImportPad = -1;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -59,12 +61,20 @@ public class MainActivity extends Activity {
     }
 
     void showPadChooser(final int pad) {
-        new AlertDialog.Builder(this).setTitle("Assign pad " + (pad + 1)).setItems(SoundPadEngine.LIBRARY, (dialog, which) -> loopView.assignPad(pad, SoundPadEngine.LIBRARY[which])).show();
+        String[] options = new String[SoundPadEngine.LIBRARY.length + 1];
+        System.arraycopy(SoundPadEngine.LIBRARY, 0, options, 0, SoundPadEngine.LIBRARY.length);
+        options[options.length - 1] = "Import audio file…";
+        new AlertDialog.Builder(this).setTitle("Assign pad " + (pad + 1)).setItems(options, (dialog, which) -> { if (which == SoundPadEngine.LIBRARY.length) beginImportPad(pad); else loopView.assignPad(pad, SoundPadEngine.LIBRARY[which]); }).show();
+    }
+
+    private void beginImportPad(int pad) {
+        pendingImportPad = pad;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("audio/*"); intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION); startActivityForResult(intent, IMPORT_PAD_REQUEST);
     }
 
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.15 (build 16)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.16 (build 17)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -81,7 +91,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it. Long press a track for Delete, Mute, Solo, and Volume controls.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound or import a WAV/MP3/audio file.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -155,13 +165,45 @@ public class MainActivity extends Activity {
         String solo = loopView.trackSolo(index) ? "Unsolo" : "Solo";
         new AlertDialog.Builder(this)
                 .setTitle(name)
-                .setItems(new String[]{"Delete", mute, solo, "Volume"}, (dialog, which) -> {
+                .setItems(new String[]{"Delete", mute, solo, "Volume", "Effects"}, (dialog, which) -> {
                     if (which == 0) loopView.deleteTrack(index);
                     else if (which == 1) loopView.toggleMute(index);
                     else if (which == 2) loopView.toggleSolo(index);
-                    else showTrackVolume(index);
+                    else if (which == 3) showTrackVolume(index);
+                    else showTrackEffects(index);
                 })
                 .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    void showTrackEffects(int index) {
+        String name = loopView.trackName(index);
+        if (name == null) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        content.setPadding(pad, 0, pad, 0);
+        TextView reverbValue = new TextView(this); reverbValue.setText("Reverb " + Math.round(loopView.trackReverb(index) * 100) + "%");
+        SeekBar reverb = new SeekBar(this); reverb.setMax(100); reverb.setProgress(Math.round(loopView.trackReverb(index) * 100));
+        reverb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { reverbValue.setText("Reverb " + progress + "%"); }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        TextView delayValue = new TextView(this); delayValue.setText("Echo " + Math.round(loopView.trackDelay(index) * 100) + "%");
+        SeekBar delay = new SeekBar(this); delay.setMax(100); delay.setProgress(Math.round(loopView.trackDelay(index) * 100));
+        delay.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { delayValue.setText("Echo " + progress + "%"); }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        content.addView(reverbValue); content.addView(reverb); content.addView(delayValue); content.addView(delay);
+        new AlertDialog.Builder(this)
+                .setTitle(name + " effects")
+                .setMessage("Simple live-safe effects applied to playback and export.")
+                .setView(content)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Apply", (dialog, which) -> loopView.setTrackEffects(index, reverb.getProgress() / 100f, delay.getProgress() / 100f))
                 .show();
     }
 
@@ -224,6 +266,23 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == EXPORT_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) loopView.exportToUri(data.getData(), pendingExportFormat);
+        if (requestCode == IMPORT_PAD_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null && pendingImportPad >= 0) {
+            Uri uri = data.getData();
+            try { if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
+            loopView.importPad(pendingImportPad, uri, audioLabel(uri));
+            Toast.makeText(this, "Audio assigned to Pad " + (pendingImportPad + 1), Toast.LENGTH_LONG).show();
+            pendingImportPad = -1;
+        }
+    }
+
+    private String audioLabel(Uri uri) {
+        String raw = uri.getLastPathSegment();
+        if (raw == null || raw.length() == 0) return "IMPORTED AUDIO";
+        int slash = raw.lastIndexOf('/'); if (slash >= 0) raw = raw.substring(slash + 1);
+        int dot = raw.lastIndexOf('.'); if (dot > 0) raw = raw.substring(0, dot);
+        raw = raw.replace('_', ' ').replace('-', ' ').trim();
+        if (raw.length() == 0) raw = "IMPORTED AUDIO";
+        return raw.length() > 18 ? raw.substring(0, 18) + "…" : raw.toUpperCase();
     }
 
     @Override protected void onDestroy() { if (loopView != null) loopView.release(); super.onDestroy(); }
@@ -251,7 +310,7 @@ public class MainActivity extends Activity {
 
         LoopStationView(Context context) {
             super(context); density = getResources().getDisplayMetrics().density; engine = new LoopEngine(context); pads = new SoundPadEngine(context); metronome = new MetronomeEngine();
-            prefs = context.getSharedPreferences("amadeus", Context.MODE_PRIVATE); light = prefs.getBoolean("light_theme", false); padDisplayMode = prefs.getInt("pad_display_mode", 2); tempoBpm = Math.max(40, Math.min(220, prefs.getInt("tempo_bpm", 96))); metronomeEnabled = prefs.getBoolean("metronome_enabled", false); metronome.setTempo(tempoBpm); metronome.setEnabled(metronomeEnabled); setFocusable(true);
+            prefs = context.getSharedPreferences("amadeus", Context.MODE_PRIVATE); light = prefs.getBoolean("light_theme", false); padDisplayMode = prefs.getInt("pad_display_mode", 2); tempoBpm = Math.max(40, Math.min(220, prefs.getInt("tempo_bpm", 96))); metronomeEnabled = prefs.getBoolean("metronome_enabled", false); metronome.setTempo(tempoBpm); metronome.setEnabled(metronomeEnabled); engine.setTempoBpm(tempoBpm); setFocusable(true);
         }
 
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
@@ -261,16 +320,20 @@ public class MainActivity extends Activity {
         boolean trackMuted(int index) { return engine.isTrackMuted(index); }
         boolean trackSolo(int index) { return engine.isTrackSolo(index); }
         float trackVolume(int index) { return engine.trackVolume(index); }
+        float trackReverb(int index) { return engine.trackReverb(index); }
+        float trackDelay(int index) { return engine.trackDelay(index); }
         void toggleMute(int index) { engine.toggleMute(index); invalidate(); }
         void toggleSolo(int index) { engine.toggleSolo(index); invalidate(); }
         void setTrackVolume(int index, float volume) { engine.setTrackVolume(index, volume); invalidate(); }
+        void setTrackEffects(int index, float reverb, float delay) { engine.setTrackEffects(index, reverb, delay); invalidate(); }
         void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
         void saveProject() { engine.saveProject(); invalidate(); }
         int getTempoBpm() { return tempoBpm; }
         boolean isMetronomeEnabled() { return metronomeEnabled; }
-        void setTempo(int bpm, boolean enabled) { tempoBpm = Math.max(40, Math.min(220, bpm)); metronomeEnabled = enabled; prefs.edit().putInt("tempo_bpm", tempoBpm).putBoolean("metronome_enabled", enabled).apply(); metronome.setTempo(tempoBpm); metronome.setEnabled(enabled); invalidate(); }
+        void setTempo(int bpm, boolean enabled) { tempoBpm = Math.max(40, Math.min(220, bpm)); metronomeEnabled = enabled; prefs.edit().putInt("tempo_bpm", tempoBpm).putBoolean("metronome_enabled", enabled).apply(); metronome.setTempo(tempoBpm); metronome.setEnabled(enabled); engine.setTempoBpm(tempoBpm); invalidate(); }
         String projectName() { return engine.getProjectName(); }
         void setProjectName(String name) { engine.setProjectName(name); invalidate(); }
+        void importPad(int pad, Uri uri, String displayName) { pads.importPad(pad, uri, displayName); invalidate(); }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
@@ -387,7 +450,7 @@ public class MainActivity extends Activity {
             paint.setStyle(Paint.Style.FILL); paint.setStrokeCap(Paint.Cap.BUTT);
         }
 
-        private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); String stateLabel = track.muted ? "MUTED" : engine.isTrackSolo(index) ? "SOLO" : "LOOPING"; if (track.volume < .99f && !track.muted) stateLabel += " • " + Math.round(track.volume * 100) + "%"; c.drawText(stateLabel, dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(90) + dp(52) * track.volume, y + dp(29), dp(8), paint); }
+        private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); String stateLabel = track.muted ? "MUTED" : engine.isTrackSolo(index) ? "SOLO" : "LOOPING"; if (track.volume < .99f && !track.muted) stateLabel += " • " + Math.round(track.volume * 100) + "%"; if (track.reverb > .01f || track.delay > .01f) stateLabel += " • FX"; c.drawText(stateLabel, dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(90) + dp(52) * track.volume, y + dp(29), dp(8), paint); }
         private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { RectF rect = new RectF(l, t, r, b); paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(rect, dp(16), dp(16), paint); drawButtonBorder(c, rect, dp(16)); paint.setColor(selected ? Color.WHITE : text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(11)); c.drawText(label, l + dp(13), t + dp(21), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); }
         private void drawPill(Canvas c, float l, float t, float r, float b, int color, String label) { RectF rect = new RectF(l, t, r, b); paint.setColor(color); c.drawRoundRect(rect, dp(18), dp(18), paint); drawButtonBorder(c, rect, dp(18)); paint.setColor(Color.rgb(188, 180, 210)); paint.setTextSize(dp(12)); c.drawText(label, l + dp(16), t + dp(21), paint); }
         private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { RectF rect = new RectF(l, t, r, b); paint.setColor(color); c.drawRoundRect(rect, dp(16), dp(16), paint); drawButtonBorder(c, rect, dp(16)); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(10)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + (r - l - paint.measureText(label)) / 2f, t + dp(45), paint); }

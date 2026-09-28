@@ -2,9 +2,11 @@ package com.efremandrei.amadeus;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.MediaPlayer;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
+import android.net.Uri;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -22,22 +24,28 @@ public final class SoundPadEngine {
     };
     private static final int SAMPLE_RATE = 44100;
     private final SharedPreferences prefs;
+    private final Context appContext;
     private final Map<String, short[]> samples = new HashMap<>();
     private int activePreset;
 
     public SoundPadEngine(Context context) {
-        prefs = context.getApplicationContext().getSharedPreferences("amadeus", Context.MODE_PRIVATE);
+        appContext = context.getApplicationContext();
+        prefs = appContext.getSharedPreferences("amadeus", Context.MODE_PRIVATE);
         activePreset = Math.max(0, Math.min(PRESETS.length - 1, prefs.getInt("sound_preset", 0)));
     }
 
     public int getActivePreset() { return activePreset; }
     public String getActivePresetName() { return PRESETS[activePreset]; }
     public void nextPreset() { activePreset = (activePreset + 1) % PRESETS.length; prefs.edit().putInt("sound_preset", activePreset).apply(); }
-    public String getSoundForPad(int pad) { return prefs.getString(key(activePreset, pad), DEFAULTS[activePreset][pad]); }
-    public void assignPad(int pad, String sound) { if (pad >= 0 && pad < PAD_COUNT) prefs.edit().putString(key(activePreset, pad), sound).apply(); }
+    public String getSoundForPad(int pad) { return prefs.getString(nameKey(activePreset, pad), prefs.getString(key(activePreset, pad), DEFAULTS[activePreset][pad])); }
+    public void assignPad(int pad, String sound) { if (pad >= 0 && pad < PAD_COUNT) prefs.edit().remove(uriKey(activePreset, pad)).remove(nameKey(activePreset, pad)).putString(key(activePreset, pad), sound).apply(); }
+    public void importPad(int pad, Uri uri, String displayName) { if (pad >= 0 && pad < PAD_COUNT && uri != null) prefs.edit().remove(key(activePreset, pad)).putString(uriKey(activePreset, pad), uri.toString()).putString(nameKey(activePreset, pad), displayName).apply(); }
+    public boolean isImported(int pad) { return pad >= 0 && pad < PAD_COUNT && prefs.contains(uriKey(activePreset, pad)); }
 
     public void playPad(int pad) {
         if (pad < 0 || pad >= PAD_COUNT) return;
+        String importedUri = prefs.getString(uriKey(activePreset, pad), null);
+        if (importedUri != null) { playImported(importedUri); return; }
         final short[] pcm = sampleFor(getSoundForPad(pad));
         new Thread(() -> {
             AudioTrack track = null;
@@ -51,7 +59,21 @@ public final class SoundPadEngine {
         }, "Amadeus-pad").start();
     }
 
+    private void playImported(String uriString) {
+        try {
+            MediaPlayer player = new MediaPlayer();
+            player.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build());
+            player.setDataSource(appContext, Uri.parse(uriString));
+            player.setOnPreparedListener(MediaPlayer::start);
+            player.setOnCompletionListener(MediaPlayer::release);
+            player.setOnErrorListener((mp, what, extra) -> { mp.release(); return true; });
+            player.prepareAsync();
+        } catch (Exception ignored) { }
+    }
+
     private String key(int preset, int pad) { return "sound_" + preset + "_" + pad; }
+    private String uriKey(int preset, int pad) { return "pad_uri_" + preset + "_" + pad; }
+    private String nameKey(int preset, int pad) { return "pad_name_" + preset + "_" + pad; }
     private short[] sampleFor(String name) { synchronized (samples) { if (!samples.containsKey(name)) samples.put(name, createSample(name)); return samples.get(name); } }
 
     private short[] createSample(String name) {

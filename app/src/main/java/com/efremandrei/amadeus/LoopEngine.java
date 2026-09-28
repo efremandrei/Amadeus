@@ -23,6 +23,8 @@ public final class LoopEngine {
     public enum State { IDLE, RECORDING, PLAYING }
 
     public static final int SAMPLE_RATE = 44100;
+    private static final int MAGIC = 0x414D4442;
+    private static final int LEGACY_MAGIC = 0x414D4441;
     private static final int MAX_TRACKS = 8;
     private final Object lock = new Object();
     private final List<Track> tracks = new ArrayList<>();
@@ -41,6 +43,7 @@ public final class LoopEngine {
     private String demoName = "";
     private String projectName = "LOOP SESSION 01";
     private int soloIndex = -1;
+    private int tempoBpm = 96;
 
     public static final class Track {
         public final String name;
@@ -48,6 +51,8 @@ public final class LoopEngine {
         public final short[] pcm;
         public boolean muted;
         public float volume = 1f;
+        public float reverb;
+        public float delay;
 
         Track(String name, int colorIndex, short[] pcm) {
             this.name = name;
@@ -68,6 +73,7 @@ public final class LoopEngine {
     public int getLoopLength() { return loopLength; }
     public boolean isDemoMode() { return demoMode; }
     public String getDemoName() { return demoName; }
+    public void setTempoBpm(int bpm) { tempoBpm = Math.max(40, Math.min(220, bpm)); }
     public String getProjectName() { synchronized (lock) { return projectName; } }
 
     public void setProjectName(String name) {
@@ -97,7 +103,7 @@ public final class LoopEngine {
         synchronized (lock) {
             if (loopLength <= 0 || tracks.isEmpty()) return new short[0];
             short[] mix = new short[loopLength];
-            for (int i = 0; i < loopLength; i++) { float sum = 0f; for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && i < track.pcm.length) sum += track.pcm[i] * track.volume; } mix[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum)); }
+            for (int i = 0; i < loopLength; i++) { float sum = 0f; for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && i < track.pcm.length) sum += sampleWithEffects(track, i); } mix[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum)); }
             return mix;
         }
     }
@@ -124,8 +130,8 @@ public final class LoopEngine {
             if (tracks.isEmpty()) {
                 demoMode = false; demoName = "";
                 soloIndex = -1;
-                loopLength = take.length;
-                tracks.add(new Track("LOOP 1", 0, take));
+                loopLength = quantizedLoopLength(take.length);
+                tracks.add(new Track("LOOP 1", 0, fitToLoop(take, loopLength)));
             } else if (tracks.size() < MAX_TRACKS) {
                 demoMode = false; demoName = "";
                 soloIndex = -1;
@@ -160,6 +166,15 @@ public final class LoopEngine {
 
     public void setTrackVolume(int index, float volume) {
         synchronized (lock) { if (index >= 0 && index < tracks.size()) tracks.get(index).volume = Math.max(0f, Math.min(1f, volume)); }
+        saveSession();
+    }
+
+    public float trackReverb(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).reverb : 0f; } }
+
+    public float trackDelay(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).delay : 0f; } }
+
+    public void setTrackEffects(int index, float reverb, float delay) {
+        synchronized (lock) { if (index >= 0 && index < tracks.size()) { tracks.get(index).reverb = Math.max(0f, Math.min(1f, reverb)); tracks.get(index).delay = Math.max(0f, Math.min(1f, delay)); } }
         saveSession();
     }
 
@@ -261,7 +276,7 @@ public final class LoopEngine {
                     int sampleIndex = (position + i) % length;
                     float sum = 0f;
                     synchronized (lock) {
-                        for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && sampleIndex < track.pcm.length) sum += track.pcm[sampleIndex] * track.volume; }
+                        for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && sampleIndex < track.pcm.length) sum += sampleWithEffects(track, sampleIndex); }
                     }
                     mixed[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum));
                 }
@@ -269,6 +284,32 @@ public final class LoopEngine {
                 position = (position + mixed.length) % length;
             }
         } finally { try { output.stop(); } catch (Exception ignored) {} output.release(); playbackThread = null; }
+    }
+
+    private int quantizedLoopLength(int capturedLength) {
+        double samplesPerBeat = SAMPLE_RATE * 60.0 / tempoBpm;
+        int beats = Math.max(1, Math.min(128, (int) Math.round(capturedLength / samplesPerBeat)));
+        return Math.max(1, (int) Math.round(beats * samplesPerBeat));
+    }
+
+    private float sampleWithEffects(Track track, int sampleIndex) {
+        float value = track.pcm[sampleIndex] * track.volume;
+        if (track.delay > 0f) {
+            int delaySamples = Math.max(1, (int) (SAMPLE_RATE * .25f));
+            value += delayedSample(track, sampleIndex, delaySamples) * track.delay * .32f;
+        }
+        if (track.reverb > 0f) {
+            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .07f))) * track.reverb * .18f;
+            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .13f))) * track.reverb * .12f;
+            value += delayedSample(track, sampleIndex, Math.max(1, (int) (SAMPLE_RATE * .21f))) * track.reverb * .08f;
+        }
+        return value;
+    }
+
+    private float delayedSample(Track track, int sampleIndex, int delaySamples) {
+        int index = sampleIndex - delaySamples;
+        while (index < 0) index += Math.max(1, loopLength);
+        return track.pcm[index % track.pcm.length] * track.volume;
     }
 
     private static short[] fitToLoop(short[] source, int targetLength) {
@@ -289,11 +330,11 @@ public final class LoopEngine {
         synchronized (lock) {
             if (demoMode) return;
             try (DataOutputStream out = new DataOutputStream(new FileOutputStream(appContext.getFileStreamPath("session.bin")))) {
-                out.writeInt(0x414D4441);
+                out.writeInt(MAGIC);
                 out.writeInt(loopLength);
                 out.writeInt(tracks.size());
                 for (Track track : tracks) {
-                    out.writeUTF(track.name); out.writeInt(track.colorIndex); out.writeBoolean(track.muted); out.writeFloat(track.volume);
+                    out.writeUTF(track.name); out.writeInt(track.colorIndex); out.writeBoolean(track.muted); out.writeFloat(track.volume); out.writeFloat(track.reverb); out.writeFloat(track.delay);
                     out.writeInt(track.pcm.length); for (short sample : track.pcm) out.writeShort(sample);
                 }
             } catch (Exception ignored) { }
@@ -302,13 +343,15 @@ public final class LoopEngine {
 
     private void loadSession() {
         try (DataInputStream in = new DataInputStream(new FileInputStream(appContext.getFileStreamPath("session.bin")))) {
-            if (in.readInt() != 0x414D4441) return;
+            int magic = in.readInt();
+            if (magic != MAGIC && magic != LEGACY_MAGIC) return;
+            boolean hasEffects = magic == MAGIC;
             int savedLength = in.readInt(); int count = Math.min(MAX_TRACKS, in.readInt());
             for (int i = 0; i < count; i++) {
-                String name = in.readUTF(); int color = in.readInt(); boolean muted = in.readBoolean(); float volume = in.readFloat();
+                String name = in.readUTF(); int color = in.readInt(); boolean muted = in.readBoolean(); float volume = in.readFloat(); float reverb = hasEffects ? in.readFloat() : 0f; float delay = hasEffects ? in.readFloat() : 0f;
                 int length = in.readInt(); if (length < 1 || length > SAMPLE_RATE * 60 * 10) return;
                 short[] pcm = new short[length]; for (int j = 0; j < length; j++) pcm[j] = in.readShort();
-                Track track = new Track(name, color, pcm); track.muted = muted; track.volume = volume; tracks.add(track);
+                Track track = new Track(name, color, pcm); track.muted = muted; track.volume = volume; track.reverb = reverb; track.delay = delay; tracks.add(track);
             }
             loopLength = savedLength > 0 ? savedLength : (tracks.isEmpty() ? 0 : tracks.get(0).pcm.length);
         } catch (Exception ignored) { }
