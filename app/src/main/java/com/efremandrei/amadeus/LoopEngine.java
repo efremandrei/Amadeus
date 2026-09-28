@@ -154,6 +154,12 @@ public final class LoopEngine {
         if (!wasDemo) saveSession();
     }
 
+    /** Persists the current project state inside the app without creating an audio export. */
+    public void saveProject() {
+        synchronized (lock) { demoMode = false; demoName = ""; }
+        saveSession();
+    }
+
     public void release() {
         recordingRequested = false;
         playbackRequested = false;

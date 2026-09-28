@@ -1,0 +1,42 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/splash_background"
+    android:padding="32dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <ImageView
+            android:layout_width="190dp"
+            android:layout_height="190dp"
+            android:contentDescription="Amadeus loop mark"
+            android:scaleType="centerInside"
+            android:src="@drawable/amadeus_icon" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:fontFamily="sans"
+            android:letterSpacing="0.18"
+            android:text="AMADEUS"
+            android:textColor="#F5F3FA"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="sans"
+            android:letterSpacing="0.12"
+            android:text="LOOP  •  LAYER  •  CREATE"
+            android:textColor="#A5A0B3"
+            android:textSize="11sp" />
+    </LinearLayout>
+</FrameLayout>

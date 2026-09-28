@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.10 (build 11)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.11 (build 12)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it, or long press a track and choose Delete to remove that specific loop.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it, or long press a track and choose Delete to remove that specific loop.\n\nSAVE\nTap Save in the bottom action bar to save the current project inside Amadeus. This preserves your loop layers and settings without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -103,6 +103,20 @@ public class MainActivity extends Activity {
         if (!loopView.hasTracks()) { Toast.makeText(this, "Record a loop before exporting", Toast.LENGTH_SHORT).show(); return; }
         String[] formats = {"WAV — uncompressed", "M4A — compact AAC", "MP3 — compatible"};
         new AlertDialog.Builder(this).setTitle("Export creation").setItems(formats, (dialog, which) -> beginExport(which)).show();
+    }
+
+    void saveProject() {
+        loopView.saveProject();
+        Toast.makeText(this, "Project saved on this device — no music file created", Toast.LENGTH_LONG).show();
+    }
+
+    void exitApp() {
+        new AlertDialog.Builder(this)
+                .setTitle("Exit Amadeus?")
+                .setMessage("Your project is saved automatically. Exit the app now?")
+                .setNegativeButton("Stay", null)
+                .setPositiveButton("Exit", (dialog, which) -> finish())
+                .show();
     }
 
     private void beginExport(int format) {
@@ -151,6 +165,7 @@ public class MainActivity extends Activity {
         boolean hasTracks() { return engine.hasTracks(); }
         String trackName(int index) { return engine.trackName(index); }
         void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
+        void saveProject() { engine.saveProject(); invalidate(); }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
@@ -220,12 +235,21 @@ public class MainActivity extends Activity {
 
         private void drawUtilityButtons(Canvas c, float w, float h, int surface, int text) {
             float y = h - dp(98);
-            if (!padsMode) { drawSmallButton(c, dp(20), y, dp(132), y + dp(32), surface, text, "DEMOS"); drawSmallButton(c, dp(144), y, dp(236), y + dp(32), surface, text, "EXPORT"); }
+            if (!padsMode) {
+                float gap = dp(8), left = dp(20), buttonW = (w - dp(40) - gap * 3) / 4f;
+                drawSmallButton(c, left, y, left + buttonW, y + dp(32), surface, text, "DEMOS");
+                drawSmallButton(c, left + buttonW + gap, y, left + buttonW * 2 + gap, y + dp(32), surface, text, "SAVE");
+                drawSmallButton(c, left + buttonW * 2 + gap * 2, y, left + buttonW * 3 + gap * 2, y + dp(32), surface, text, "EXPORT");
+                drawSmallButton(c, left + buttonW * 3 + gap * 3, y, w - dp(20), y + dp(32), surface, text, "EXIT");
+            } else {
+                drawSmallButton(c, w - dp(236), y, w - dp(132), y + dp(32), surface, text, "SAVE");
+                drawSmallButton(c, w - dp(124), y, w - dp(20), y + dp(32), surface, text, "EXIT");
+            }
         }
 
         private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
             paint.setColor(surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint);
-            paint.setColor(text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(16), t + dp(20), paint);
+            paint.setColor(text); paint.setTextSize(dp(9)); float labelWidth = paint.measureText(label); c.drawText(label, l + (r - l - labelWidth) / 2f, t + dp(20), paint);
         }
 
         private void drawDisplayChoice(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
@@ -282,7 +306,17 @@ public class MainActivity extends Activity {
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
             if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
-            if (y >= h - dp(110) && y < h - dp(66)) { if (!padsMode && x < dp(140)) ((MainActivity) getContext()).showDemoChooser(); else if (!padsMode && x < dp(260)) ((MainActivity) getContext()).showExportChooser(); return true; }
+            if (y >= h - dp(110) && y < h - dp(66)) {
+                if (!padsMode) {
+                    float gap = dp(8), left = dp(20), buttonW = (w - dp(40) - gap * 3) / 4f;
+                    if (x >= left && x < left + buttonW) ((MainActivity) getContext()).showDemoChooser();
+                    else if (x < left + buttonW + gap + buttonW) ((MainActivity) getContext()).saveProject();
+                    else if (x < left + buttonW * 3 + gap * 2) ((MainActivity) getContext()).showExportChooser();
+                    else ((MainActivity) getContext()).exitApp();
+                } else if (x >= w - dp(236) && x < w - dp(132)) ((MainActivity) getContext()).saveProject();
+                else if (x >= w - dp(124)) ((MainActivity) getContext()).exitApp();
+                return true;
+            }
             if (padsMode) {
                 if (y >= dp(150) && y < dp(200) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
                 if (y >= dp(150) && y < dp(200) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }
