@@ -25,12 +25,15 @@ import android.view.View;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends Activity {
     private static final int MIC_REQUEST = 42;
@@ -40,6 +43,9 @@ public class MainActivity extends Activity {
     private int pendingExportFormat = ExportManager.FORMAT_WAV;
     private ExportManager.Settings pendingExportSettings = ExportManager.Settings.defaults(ExportManager.FORMAT_WAV);
     private int pendingImportPad = -1;
+    private AlertDialog exportDialog;
+    private ProgressBar exportProgress;
+    private TextView exportStatus;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -76,7 +82,7 @@ public class MainActivity extends Activity {
 
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.18 (build 19)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.19 (build 20)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -93,7 +99,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTIMELINE\nOpen Timeline to see the arrangement. Drag a colored block to move it, or drag its left and right handles to trim the active range. Long press a block for Duplicate, Move up/down, Reset trim, and track controls. Playback and export use the edited ranges.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound or import a WAV/MP3/audio file.\n\nEXPORT\nTap Export to choose format and advanced quality controls: sample rate, codec bitrate, WAV bit depth, normalization, and fades.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTIMELINE\nOpen Timeline to see the arrangement. Drag a colored block to move it, or drag its left and right handles to trim the active range. Long press a block for Duplicate, Move up/down, Reset trim, and track controls. Playback and export use the edited ranges.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound or import a WAV/MP3/audio file.\n\nEXPORT\nTap Export to choose format and advanced quality controls: sample rate, codec bitrate, WAV bit depth, normalization, loudness target, and fades. The export dialog shows progress and can be canceled while processing.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -264,6 +270,12 @@ public class MainActivity extends Activity {
         final CheckBox bitDepth = new CheckBox(this); bitDepth.setText("24-bit WAV container (larger file)"); bitDepth.setChecked(defaults.bitDepth == 24); bitDepth.setVisibility(format == ExportManager.FORMAT_WAV ? View.VISIBLE : View.GONE); content.addView(bitDepth);
         final CheckBox normalize = new CheckBox(this); normalize.setText("Normalize safely to prevent clipping"); normalize.setChecked(defaults.normalize); content.addView(normalize);
 
+        final int[] loudnessTargets = new int[]{-18, -16, -14, -12, -10};
+        TextView loudnessValue = new TextView(this); loudnessValue.setText("Loudness target " + Math.round(defaults.targetLufs) + " LUFS");
+        SeekBar loudness = new SeekBar(this); loudness.setMax(loudnessTargets.length - 1); loudness.setProgress(2);
+        loudness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { loudnessValue.setText("Loudness target " + loudnessTargets[progress] + " LUFS"); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        content.addView(loudnessValue); content.addView(loudness);
+
         final int[] fades = new int[]{0, 10, 50, 100, 250, 500};
         TextView fadeInValue = new TextView(this); fadeInValue.setText("Fade in 0 ms"); SeekBar fadeIn = new SeekBar(this); fadeIn.setMax(fades.length - 1); fadeIn.setProgress(0); fadeIn.setOnSeekBarChangeListener(fadeListener(fadeInValue, "Fade in ", fades)); content.addView(fadeInValue); content.addView(fadeIn);
         TextView fadeOutValue = new TextView(this); fadeOutValue.setText("Fade out 0 ms"); SeekBar fadeOut = new SeekBar(this); fadeOut.setMax(fades.length - 1); fadeOut.setProgress(0); fadeOut.setOnSeekBarChangeListener(fadeListener(fadeOutValue, "Fade out ", fades)); content.addView(fadeOutValue); content.addView(fadeOut);
@@ -272,7 +284,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Advanced " + exportFormatName(format) + " quality").setMessage(format == ExportManager.FORMAT_WAV ? "Lossless export with optional 24-bit depth, resampling, normalization, and fades." : "Tune the codec bitrate, resampling, normalization, and fades before choosing a save location.").setView(scroll).setNegativeButton("Cancel", null).setPositiveButton("Choose file", (dialog, which) -> {
             int selectedRate = rate.getProgress() == 1 ? 48000 : 44100;
             int selectedBitrate = bitrates[bitrate.getProgress()];
-            pendingExportSettings = new ExportManager.Settings(selectedRate, selectedBitrate, bitDepth.isChecked() ? 24 : 16, normalize.isChecked(), fades[fadeIn.getProgress()], fades[fadeOut.getProgress()]);
+            pendingExportSettings = new ExportManager.Settings(selectedRate, selectedBitrate, bitDepth.isChecked() ? 24 : 16, normalize.isChecked(), fades[fadeIn.getProgress()], fades[fadeOut.getProgress()], loudnessTargets[loudness.getProgress()]);
             beginExport(format, pendingExportSettings);
         }).show();
     }
@@ -311,7 +323,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == EXPORT_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) loopView.exportToUri(data.getData(), pendingExportFormat, pendingExportSettings);
+        if (requestCode == EXPORT_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) startExport(data.getData(), pendingExportFormat, pendingExportSettings);
         if (requestCode == IMPORT_PAD_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null && pendingImportPad >= 0) {
             Uri uri = data.getData();
             try { if ((data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION) != 0) getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION); } catch (Exception ignored) { }
@@ -319,6 +331,28 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Audio assigned to Pad " + (pendingImportPad + 1), Toast.LENGTH_LONG).show();
             pendingImportPad = -1;
         }
+    }
+
+    private void startExport(final Uri destination, final int format, final ExportManager.Settings settings) {
+        final AtomicBoolean cancelled = new AtomicBoolean(false);
+        LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density); content.setPadding(pad, 0, pad, 0);
+        exportStatus = new TextView(this); exportStatus.setText("Preparing audio…"); exportStatus.setTextSize(15); content.addView(exportStatus);
+        exportProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal); exportProgress.setMax(100); exportProgress.setProgress(0); content.addView(exportProgress);
+        exportDialog = new AlertDialog.Builder(this).setTitle("Exporting " + exportFormatName(format)).setView(content).setNegativeButton("Cancel", (dialog, which) -> cancelled.set(true)).create();
+        exportDialog.setOnDismissListener(dialog -> cancelled.set(true)); exportDialog.show();
+        loopView.exportToUri(destination, format, settings, new ExportManager.ProgressListener() {
+            @Override public void onProgress(final int percent) { runOnUiThread(() -> { if (exportProgress != null) exportProgress.setProgress(percent); if (exportStatus != null) exportStatus.setText(percent < 30 ? "Preparing audio… " + percent + "%" : "Encoding… " + percent + "%"); }); }
+            @Override public boolean isCancelled() { return cancelled.get(); }
+        });
+    }
+
+    void onExportFinished(Exception error) {
+        if (exportDialog != null && exportDialog.isShowing()) exportDialog.dismiss();
+        exportDialog = null; exportProgress = null; exportStatus = null;
+        if (error == null) Toast.makeText(this, "Export completed", Toast.LENGTH_LONG).show();
+        else if (error instanceof CancellationException) Toast.makeText(this, "Export canceled", Toast.LENGTH_SHORT).show();
+        else Toast.makeText(this, "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show();
     }
 
     private String audioLabel(Uri uri) {
@@ -389,11 +423,12 @@ public class MainActivity extends Activity {
         void importPad(int pad, Uri uri, String displayName) { pads.importPad(pad, uri, displayName); invalidate(); }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; timelineMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
-        void exportToUri(final Uri destination, final int format, final ExportManager.Settings settings) {
+        void exportToUri(final Uri destination, final int format, final ExportManager.Settings settings, final ExportManager.ProgressListener progress) {
             final short[] audio = engine.mixedLoop();
             new Thread(() -> {
-                try { ExportManager.export(getContext(), destination, format, audio, settings); ((Activity) getContext()).runOnUiThread(() -> Toast.makeText(getContext(), "Exported ." + ExportManager.extension(format) + " with selected quality", Toast.LENGTH_LONG).show()); }
-                catch (Exception error) { ((Activity) getContext()).runOnUiThread(() -> Toast.makeText(getContext(), "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show()); }
+                MainActivity activity = (MainActivity) getContext();
+                try { ExportManager.export(getContext(), destination, format, audio, settings, progress); activity.runOnUiThread(() -> activity.onExportFinished(null)); }
+                catch (Exception error) { activity.runOnUiThread(() -> activity.onExportFinished(error)); }
             }, "Amadeus-export").start();
         }
         void release() { metronome.release(); engine.release(); }
