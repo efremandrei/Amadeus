@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
     void showAbout() {
         new AlertDialog.Builder(this)
                 .setTitle("About Amadeus")
-                .setMessage("Loop-first music creation\n\nVersion 0.1.11 (build 12)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.12 (build 13)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
                 .setPositiveButton("Close", null)
                 .show();
     }
@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
 
         private void drawStatusBadge(Canvas c, float x, float y, int surface, int text, int secondary) {
             boolean recording = engine.getState() == LoopEngine.State.RECORDING, active = padsMode || engine.getState() == LoopEngine.State.PLAYING; String label = recording ? "RECORDING" : engine.isDemoMode() ? "DEMO" : active ? "LIVE" : "READY"; int color = recording ? Color.rgb(248, 113, 113) : engine.isDemoMode() ? Color.rgb(251, 146, 60) : active ? Color.rgb(45, 212, 191) : Color.rgb(167, 139, 250);
-            paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + dp(86), y + dp(26)), dp(13), dp(13), paint); paint.setColor(color); c.drawCircle(x + dp(13), y + dp(13), dp(4), paint); paint.setColor(secondary); paint.setTextSize(dp(9)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText(label, x + dp(23), y + dp(17), paint);
+            paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + dp(86), y + dp(26)), dp(13), dp(13), paint); paint.setColor(color); c.drawCircle(x + dp(13), y + dp(13), dp(4), paint); paint.setColor(secondary); paint.setTextSize(dp(10)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText(label, x + dp(23), y + dp(17), paint);
         }
 
         private void drawTopUtilityButtons(Canvas c, float w, int surface, int text) {
@@ -213,9 +213,9 @@ public class MainActivity extends Activity {
             else for (int i = 0; i < tracks.size(); i++) drawTrack(c, tracks.get(i), i, top + i * rowHeight - trackScrollOffset, w, surface, text, secondary);
             c.restore();
             if (maxTrackScroll > 0) drawTrackScrollbar(c, w, top, viewportBottom, secondary);
-            float controlsTop = h - dp(150); paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : engine.isDemoMode() ? "DEMO — " + engine.getDemoName() + " • tap to add a layer" : engine.getState() == LoopEngine.State.PLAYING ? "PLAYING — tap to add a layer" : "READY — tap to add a layer", dp(24), controlsTop - dp(18), paint);
+            float controlsTop = h - dp(190); paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText(engine.getState() == LoopEngine.State.RECORDING ? "RECORDING — tap to close loop" : tracks.isEmpty() ? "READY TO RECORD" : engine.isDemoMode() ? "DEMO — " + engine.getDemoName() + " • tap to add a layer" : engine.getState() == LoopEngine.State.PLAYING ? "PLAYING — tap to add a layer" : "READY — tap to add a layer", dp(24), controlsTop - dp(18), paint);
             drawButton(c, dp(22), controlsTop, dp(92), controlsTop + dp(54), surface, "↶", "UNDO", text); drawRecord(c, w / 2, controlsTop + dp(29), engine.getState() == LoopEngine.State.RECORDING); drawButton(c, w - dp(114), controlsTop, w - dp(22), controlsTop + dp(54), surface, "+", "ADD LOOP", text);
-            paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("MIC INPUT", dp(24), h - dp(48), paint); paint.setColor(Color.rgb(65, 60, 80)); c.drawRoundRect(new RectF(dp(24), h - dp(36), w - dp(24), h - dp(28)), dp(4), dp(4), paint); paint.setColor(Color.rgb(167, 139, 250)); float levelWidth = (w - dp(48)) * Math.min(1f, engine.getInputLevel() * 2.5f); c.drawRoundRect(new RectF(dp(24), h - dp(36), dp(24) + levelWidth, h - dp(28)), dp(4), dp(4), paint);
+            paint.setColor(secondary); paint.setTextSize(dp(13)); c.drawText("MIC INPUT", dp(24), h - dp(48), paint); paint.setColor(Color.rgb(65, 60, 80)); c.drawRoundRect(new RectF(dp(24), h - dp(36), w - dp(24), h - dp(28)), dp(4), dp(4), paint); paint.setColor(Color.rgb(167, 139, 250)); float levelWidth = (w - dp(48)) * Math.min(1f, engine.getInputLevel() * 2.5f); c.drawRoundRect(new RectF(dp(24), h - dp(36), dp(24) + levelWidth, h - dp(28)), dp(4), dp(4), paint);
         }
 
         private void drawTrackScrollbar(Canvas c, float w, float top, float bottom, int secondary) {
@@ -249,7 +249,7 @@ public class MainActivity extends Activity {
 
         private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
             paint.setColor(surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint);
-            paint.setColor(text); paint.setTextSize(dp(9)); float labelWidth = paint.measureText(label); c.drawText(label, l + (r - l - labelWidth) / 2f, t + dp(20), paint);
+            paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(11)); float labelWidth = paint.measureText(label); c.drawText(label, l + (r - l - labelWidth) / 2f, t + dp(22), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT);
         }
 
         private void drawDisplayChoice(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
@@ -283,9 +283,9 @@ public class MainActivity extends Activity {
         }
 
         private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); c.drawText(track.muted ? "MUTED" : "LOOPING", dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(64), y + dp(29), dp(8), paint); }
-        private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(13), t + dp(20), paint); }
+        private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(selected ? Color.WHITE : text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(11)); c.drawText(label, l + dp(13), t + dp(21), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); }
         private void drawPill(Canvas c, float l, float t, float r, float b, int color, String label) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(18), dp(18), paint); paint.setColor(Color.rgb(188, 180, 210)); paint.setTextSize(dp(12)); c.drawText(label, l + dp(16), t + dp(21), paint); }
-        private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(9)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + dp(13), t + dp(45), paint); }
+        private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { paint.setColor(color); c.drawRoundRect(new RectF(l, t, r, b), dp(16), dp(16), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(10)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + (r - l - paint.measureText(label)) / 2f, t + dp(45), paint); }
         private void drawRecord(Canvas c, float x, float y, boolean recording) { float pulse = 1f + (float) Math.sin(SystemClock.uptimeMillis() / 180.0) * .06f; paint.setStyle(Paint.Style.FILL); paint.setColor(recording ? Color.argb(48, 248, 113, 113) : Color.argb(42, 167, 139, 250)); c.drawCircle(x, y, dp(51) * pulse, paint); paint.setColor(recording ? Color.rgb(248, 113, 113) : Color.rgb(167, 139, 250)); c.drawCircle(x, y, dp(37), paint); paint.setColor(Color.WHITE); if (recording) c.drawRoundRect(new RectF(x-dp(11), y-dp(11), x+dp(11), y+dp(11)), dp(4), dp(4), paint); else c.drawCircle(x, y, dp(12), paint); }
         private float dp(float v) { return v * density; }
 
