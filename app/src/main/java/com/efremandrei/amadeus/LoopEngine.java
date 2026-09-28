@@ -1,6 +1,7 @@
 package com.efremandrei.amadeus;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
@@ -35,8 +36,11 @@ public final class LoopEngine {
     private final List<Short> capture = Collections.synchronizedList(new ArrayList<Short>());
     private int loopLength;
     private final Context appContext;
+    private final SharedPreferences prefs;
     private boolean demoMode;
     private String demoName = "";
+    private String projectName = "LOOP SESSION 01";
+    private int soloIndex = -1;
 
     public static final class Track {
         public final String name;
@@ -54,6 +58,8 @@ public final class LoopEngine {
 
     public LoopEngine(Context context) {
         appContext = context.getApplicationContext();
+        prefs = appContext.getSharedPreferences("amadeus", Context.MODE_PRIVATE);
+        projectName = prefs.getString("project_name", "LOOP SESSION 01");
         loadSession();
     }
 
@@ -62,6 +68,15 @@ public final class LoopEngine {
     public int getLoopLength() { return loopLength; }
     public boolean isDemoMode() { return demoMode; }
     public String getDemoName() { return demoName; }
+    public String getProjectName() { synchronized (lock) { return projectName; } }
+
+    public void setProjectName(String name) {
+        String clean = name == null ? "" : name.trim();
+        if (clean.length() == 0) clean = "LOOP SESSION 01";
+        if (clean.length() > 30) clean = clean.substring(0, 30);
+        synchronized (lock) { projectName = clean; }
+        prefs.edit().putString("project_name", clean).apply();
+    }
 
     public List<Track> snapshotTracks() {
         synchronized (lock) { return new ArrayList<>(tracks); }
@@ -71,7 +86,7 @@ public final class LoopEngine {
 
     public void loadDemo(DemoLibrary.Demo demo) {
         synchronized (lock) {
-            tracks.clear(); loopLength = demo.loopLength; demoMode = true; demoName = demo.name;
+            tracks.clear(); loopLength = demo.loopLength; soloIndex = -1; demoMode = true; demoName = demo.name;
             for (DemoLibrary.Layer layer : demo.layers) tracks.add(new Track(layer.name, layer.colorIndex, layer.pcm));
             state = State.PLAYING;
         }
@@ -82,7 +97,7 @@ public final class LoopEngine {
         synchronized (lock) {
             if (loopLength <= 0 || tracks.isEmpty()) return new short[0];
             short[] mix = new short[loopLength];
-            for (int i = 0; i < loopLength; i++) { float sum = 0f; for (Track track : tracks) if (!track.muted && i < track.pcm.length) sum += track.pcm[i] * track.volume; mix[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum)); }
+            for (int i = 0; i < loopLength; i++) { float sum = 0f; for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && i < track.pcm.length) sum += track.pcm[i] * track.volume; } mix[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum)); }
             return mix;
         }
     }
@@ -108,10 +123,12 @@ public final class LoopEngine {
         synchronized (lock) {
             if (tracks.isEmpty()) {
                 demoMode = false; demoName = "";
+                soloIndex = -1;
                 loopLength = take.length;
                 tracks.add(new Track("LOOP 1", 0, take));
             } else if (tracks.size() < MAX_TRACKS) {
                 demoMode = false; demoName = "";
+                soloIndex = -1;
                 tracks.add(new Track("LOOP " + (tracks.size() + 1), tracks.size() % 6, fitToLoop(take, loopLength)));
             }
         }
@@ -122,7 +139,10 @@ public final class LoopEngine {
 
     public void clearLastTrack() {
         synchronized (lock) {
-            if (!tracks.isEmpty()) tracks.remove(tracks.size() - 1);
+            int removed = tracks.size() - 1;
+            if (removed >= 0) tracks.remove(removed);
+            if (soloIndex == removed) soloIndex = -1;
+            else if (soloIndex > removed) soloIndex--;
             if (tracks.isEmpty()) { demoMode = false; demoName = ""; }
             if (tracks.isEmpty()) { loopLength = 0; playbackRequested = false; state = State.IDLE; }
         }
@@ -131,6 +151,22 @@ public final class LoopEngine {
 
     public void toggleMute(int index) {
         synchronized (lock) { if (index >= 0 && index < tracks.size()) tracks.get(index).muted = !tracks.get(index).muted; }
+        saveSession();
+    }
+
+    public boolean isTrackMuted(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() && tracks.get(index).muted; } }
+
+    public float trackVolume(int index) { synchronized (lock) { return index >= 0 && index < tracks.size() ? tracks.get(index).volume : 1f; } }
+
+    public void setTrackVolume(int index, float volume) {
+        synchronized (lock) { if (index >= 0 && index < tracks.size()) tracks.get(index).volume = Math.max(0f, Math.min(1f, volume)); }
+        saveSession();
+    }
+
+    public boolean isTrackSolo(int index) { synchronized (lock) { return soloIndex == index; } }
+
+    public void toggleSolo(int index) {
+        synchronized (lock) { if (index >= 0 && index < tracks.size()) soloIndex = soloIndex == index ? -1 : index; }
     }
 
     public String trackName(int index) {
@@ -143,6 +179,8 @@ public final class LoopEngine {
             if (index < 0 || index >= tracks.size()) return;
             wasDemo = demoMode;
             tracks.remove(index);
+            if (soloIndex == index) soloIndex = -1;
+            else if (soloIndex > index) soloIndex--;
             if (tracks.isEmpty()) {
                 loopLength = 0;
                 playbackRequested = false;
@@ -223,7 +261,7 @@ public final class LoopEngine {
                     int sampleIndex = (position + i) % length;
                     float sum = 0f;
                     synchronized (lock) {
-                        for (Track track : tracks) if (!track.muted && sampleIndex < track.pcm.length) sum += track.pcm[sampleIndex] * track.volume;
+                        for (int trackIndex = 0; trackIndex < tracks.size(); trackIndex++) { Track track = tracks.get(trackIndex); if (!track.muted && (soloIndex < 0 || soloIndex == trackIndex) && sampleIndex < track.pcm.length) sum += track.pcm[sampleIndex] * track.volume; }
                     }
                     mixed[i] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, (int) sum));
                 }

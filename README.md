@@ -28,6 +28,9 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Separated bottom action bands with larger, centered control labels
 - Thin purple borders on dark-mode buttons for clearer affordances
 - Clickable email and repository links in About
+- Adjustable 40–220 BPM tempo with optional metronome click
+- Long-press loop controls for mute, solo, volume, and delete
+- Rename projects directly from the header
 
 ## Build
 

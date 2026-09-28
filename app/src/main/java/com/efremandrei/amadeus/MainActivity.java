@@ -16,11 +16,16 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.os.SystemClock;
+import android.text.InputType;
 import android.text.method.LinkMovementMethod;
 import android.text.util.Linkify;
 import android.view.WindowInsets;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -59,7 +64,7 @@ public class MainActivity extends Activity {
 
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.14 (build 15)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.15 (build 16)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -76,7 +81,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it, or long press a track and choose Delete to remove that specific loop.\n\nSAVE\nTap Save in the bottom action bar to save the current project inside Amadeus. This preserves your loop layers and settings without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it. Long press a track for Delete, Mute, Solo, and Volume controls.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound. Configure also lets you choose icons, text, or both on the pads.\n\nEXPORT\nTap Export in Loops mode and choose WAV, M4A/AAC, or MP3. Pick a save location in the Android file picker. MP3 depends on an encoder being available on the device; WAV and M4A are the safest choices.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -100,13 +105,88 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Demo tracks").setMessage("Load a ready-made session to explore layers, mute controls, and export.").setItems(DemoLibrary.names(), (dialog, which) -> { loopView.loadDemo(which); Toast.makeText(this, DemoLibrary.get(which).description, Toast.LENGTH_LONG).show(); }).show();
     }
 
+    void showTempoDialog() {
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        content.setPadding(pad, 0, pad, 0);
+        TextView value = new TextView(this);
+        value.setTextSize(22);
+        value.setText(loopView.getTempoBpm() + " BPM");
+        SeekBar tempo = new SeekBar(this);
+        tempo.setMin(40); tempo.setMax(220); tempo.setProgress(loopView.getTempoBpm());
+        tempo.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { value.setText(progress + " BPM"); }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        CheckBox metronome = new CheckBox(this);
+        metronome.setText("Enable metronome click");
+        metronome.setChecked(loopView.isMetronomeEnabled());
+        content.addView(value); content.addView(tempo); content.addView(metronome);
+        new AlertDialog.Builder(this)
+                .setTitle("Tempo & metronome")
+                .setMessage("Use the click to keep a steady pulse while recording.")
+                .setView(content)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Apply", (dialog, which) -> loopView.setTempo(tempo.getProgress(), metronome.isChecked()))
+                .show();
+    }
+
+    void showRenameProject() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setText(loopView.projectName());
+        input.setSelection(input.length());
+        input.setHint("Project name");
+        new AlertDialog.Builder(this)
+                .setTitle("Name this project")
+                .setView(input)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save", (dialog, which) -> { loopView.setProjectName(input.getText().toString()); Toast.makeText(this, "Project name saved", Toast.LENGTH_SHORT).show(); })
+                .show();
+    }
+
     void showTrackMenu(int index) {
         String name = loopView.trackName(index);
         if (name == null) return;
+        String mute = loopView.trackMuted(index) ? "Unmute" : "Mute";
+        String solo = loopView.trackSolo(index) ? "Unsolo" : "Solo";
         new AlertDialog.Builder(this)
                 .setTitle(name)
-                .setItems(new String[]{"Delete"}, (dialog, which) -> loopView.deleteTrack(index))
+                .setItems(new String[]{"Delete", mute, solo, "Volume"}, (dialog, which) -> {
+                    if (which == 0) loopView.deleteTrack(index);
+                    else if (which == 1) loopView.toggleMute(index);
+                    else if (which == 2) loopView.toggleSolo(index);
+                    else showTrackVolume(index);
+                })
                 .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    void showTrackVolume(int index) {
+        String name = loopView.trackName(index);
+        if (name == null) return;
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        content.setPadding(pad, 0, pad, 0);
+        TextView value = new TextView(this);
+        SeekBar volume = new SeekBar(this);
+        volume.setMax(100); volume.setProgress(Math.round(loopView.trackVolume(index) * 100));
+        value.setText("Volume " + volume.getProgress() + "%");
+        volume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { value.setText("Volume " + progress + "%"); }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        content.addView(value); content.addView(volume);
+        new AlertDialog.Builder(this)
+                .setTitle(name + " volume")
+                .setView(content)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Apply", (dialog, which) -> loopView.setTrackVolume(index, volume.getProgress() / 100f))
                 .show();
     }
 
@@ -152,8 +232,11 @@ public class MainActivity extends Activity {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final LoopEngine engine;
         private final SoundPadEngine pads;
+        private final MetronomeEngine metronome;
         private final SharedPreferences prefs;
         private boolean light, padsMode, configuring;
+        private int tempoBpm;
+        private boolean metronomeEnabled;
         private int padDisplayMode;
         private float density;
         private int topInset, bottomInset;
@@ -167,16 +250,27 @@ public class MainActivity extends Activity {
         private final int[] padColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53), Color.rgb(251, 191, 36), Color.rgb(129, 140, 248) };
 
         LoopStationView(Context context) {
-            super(context); density = getResources().getDisplayMetrics().density; engine = new LoopEngine(context); pads = new SoundPadEngine(context);
-            prefs = context.getSharedPreferences("amadeus", Context.MODE_PRIVATE); light = prefs.getBoolean("light_theme", false); padDisplayMode = prefs.getInt("pad_display_mode", 2); setFocusable(true);
+            super(context); density = getResources().getDisplayMetrics().density; engine = new LoopEngine(context); pads = new SoundPadEngine(context); metronome = new MetronomeEngine();
+            prefs = context.getSharedPreferences("amadeus", Context.MODE_PRIVATE); light = prefs.getBoolean("light_theme", false); padDisplayMode = prefs.getInt("pad_display_mode", 2); tempoBpm = Math.max(40, Math.min(220, prefs.getInt("tempo_bpm", 96))); metronomeEnabled = prefs.getBoolean("metronome_enabled", false); metronome.setTempo(tempoBpm); metronome.setEnabled(metronomeEnabled); setFocusable(true);
         }
 
         void toggleRecording() { if (engine.getState() == LoopEngine.State.RECORDING) engine.stopRecording(); else engine.startRecording(); invalidate(); }
         void assignPad(int pad, String sound) { pads.assignPad(pad, sound); configuring = false; invalidate(); }
         boolean hasTracks() { return engine.hasTracks(); }
         String trackName(int index) { return engine.trackName(index); }
+        boolean trackMuted(int index) { return engine.isTrackMuted(index); }
+        boolean trackSolo(int index) { return engine.isTrackSolo(index); }
+        float trackVolume(int index) { return engine.trackVolume(index); }
+        void toggleMute(int index) { engine.toggleMute(index); invalidate(); }
+        void toggleSolo(int index) { engine.toggleSolo(index); invalidate(); }
+        void setTrackVolume(int index, float volume) { engine.setTrackVolume(index, volume); invalidate(); }
         void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
         void saveProject() { engine.saveProject(); invalidate(); }
+        int getTempoBpm() { return tempoBpm; }
+        boolean isMetronomeEnabled() { return metronomeEnabled; }
+        void setTempo(int bpm, boolean enabled) { tempoBpm = Math.max(40, Math.min(220, bpm)); metronomeEnabled = enabled; prefs.edit().putInt("tempo_bpm", tempoBpm).putBoolean("metronome_enabled", enabled).apply(); metronome.setTempo(tempoBpm); metronome.setEnabled(enabled); invalidate(); }
+        String projectName() { return engine.getProjectName(); }
+        void setProjectName(String name) { engine.setProjectName(name); invalidate(); }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format) {
@@ -186,14 +280,14 @@ public class MainActivity extends Activity {
                 catch (Exception error) { ((Activity) getContext()).runOnUiThread(() -> Toast.makeText(getContext(), "Export failed: " + error.getMessage(), Toast.LENGTH_LONG).show()); }
             }, "Amadeus-export").start();
         }
-        void release() { engine.release(); }
+        void release() { metronome.release(); engine.release(); }
 
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c); int bg = light ? Color.rgb(247, 246, 251) : Color.rgb(16, 16, 22), surface = light ? Color.WHITE : Color.rgb(26, 26, 36), text = light ? Color.rgb(35, 35, 45) : Color.rgb(245, 243, 250), secondary = light ? Color.rgb(104, 101, 116) : Color.rgb(165, 160, 179);
             c.drawColor(bg); c.save(); c.translate(0, topInset); float w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             drawAmbientBackground(c, w, h);
             paint.setColor(text); paint.setTextSize(dp(26)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("Amadeus", dp(24), dp(42), paint);
-            paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); c.drawText(padsMode ? "SOUND PADS" : "LOOP SESSION 01", dp(25), dp(64), paint);
+            paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); String projectLabel = engine.getProjectName(); if (projectLabel.length() > 24) projectLabel = projectLabel.substring(0, 24) + "…"; c.drawText(padsMode ? "SOUND PADS" : projectLabel, dp(25), dp(64), paint);
             drawStatusBadge(c, dp(24), dp(76), surface, text, secondary); drawModeTabs(c, surface, text); drawTopUtilityButtons(c, w, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
             if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
             drawUtilityButtons(c, w, h, surface, text);
@@ -217,7 +311,7 @@ public class MainActivity extends Activity {
         private void drawModeTabs(Canvas c, int surface, int text) { float y = dp(116); drawTab(c, dp(20), y, dp(111), y + dp(32), !padsMode, surface, text, "LOOPS"); drawTab(c, dp(119), y, dp(230), y + dp(32), padsMode, surface, text, "SOUND PADS"); }
 
         private void drawLoops(Canvas c, float w, float h, int surface, int text, int secondary) {
-            drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, "96 BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(168), rowHeight = dp(94), viewportBottom = h - dp(190);
+            drawPill(c, w - dp(164), dp(22), w - dp(80), dp(54), surface, tempoBpm + " BPM"); List<LoopEngine.Track> tracks = engine.snapshotTracks(); float top = dp(168), rowHeight = dp(94), viewportBottom = h - dp(190);
             maxTrackScroll = Math.max(0, top + tracks.size() * rowHeight - viewportBottom); trackScrollOffset = Math.max(0, Math.min(trackScrollOffset, maxTrackScroll));
             c.save(); c.clipRect(0, top, w, Math.max(top, viewportBottom));
             if (tracks.isEmpty()) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), top, w - dp(20), top + dp(174)), dp(22), dp(22), paint); paint.setColor(Color.rgb(167, 139, 250)); paint.setTextSize(dp(44)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("◉", dp(42), top + dp(73), paint); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText("Start with a sound", dp(100), top + dp(55), paint); paint.setColor(secondary); paint.setTextSize(dp(14)); c.drawText("Tap Record, make a loop, then layer it.", dp(100), top + dp(83), paint); c.drawText("Your first loop sets the musical grid.", dp(100), top + dp(106), paint); }
@@ -293,7 +387,7 @@ public class MainActivity extends Activity {
             paint.setStyle(Paint.Style.FILL); paint.setStrokeCap(Paint.Cap.BUTT);
         }
 
-        private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); c.drawText(track.muted ? "MUTED" : "LOOPING", dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(64), y + dp(29), dp(8), paint); }
+        private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); String stateLabel = track.muted ? "MUTED" : engine.isTrackSolo(index) ? "SOLO" : "LOOPING"; if (track.volume < .99f && !track.muted) stateLabel += " • " + Math.round(track.volume * 100) + "%"; c.drawText(stateLabel, dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(90) + dp(52) * track.volume, y + dp(29), dp(8), paint); }
         private void drawTab(Canvas c, float l, float t, float r, float b, boolean selected, int surface, int text, String label) { RectF rect = new RectF(l, t, r, b); paint.setColor(selected ? Color.rgb(167, 139, 250) : surface); c.drawRoundRect(rect, dp(16), dp(16), paint); drawButtonBorder(c, rect, dp(16)); paint.setColor(selected ? Color.WHITE : text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(11)); c.drawText(label, l + dp(13), t + dp(21), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); }
         private void drawPill(Canvas c, float l, float t, float r, float b, int color, String label) { RectF rect = new RectF(l, t, r, b); paint.setColor(color); c.drawRoundRect(rect, dp(18), dp(18), paint); drawButtonBorder(c, rect, dp(18)); paint.setColor(Color.rgb(188, 180, 210)); paint.setTextSize(dp(12)); c.drawText(label, l + dp(16), t + dp(21), paint); }
         private void drawButton(Canvas c, float l, float t, float r, float b, int color, String icon, String label, int text) { RectF rect = new RectF(l, t, r, b); paint.setColor(color); c.drawRoundRect(rect, dp(16), dp(16), paint); drawButtonBorder(c, rect, dp(16)); paint.setColor(text); paint.setTextSize(dp(21)); c.drawText(icon, l + (r-l)/2 - dp(8), t + dp(25), paint); paint.setTextSize(dp(10)); paint.setColor(Color.rgb(170, 164, 185)); c.drawText(label, l + (r - l - paint.measureText(label)) / 2f, t + dp(45), paint); }
@@ -315,7 +409,9 @@ public class MainActivity extends Activity {
             float x = event.getX(), y = event.getY() - topInset, w = getWidth(), h = Math.max(dp(1), getHeight() - topInset - bottomInset);
             if (scrolling) { scrolling = false; return true; }
             if (!padsMode && touchDownTrack >= 0 && SystemClock.uptimeMillis() - touchDownAt >= 550 && Math.abs(y - touchDownY) < dp(16)) { ((MainActivity) getContext()).showTrackMenu(touchDownTrack); touchDownTrack = -1; return true; }
+            if (!padsMode && y < dp(70) && x >= w - dp(164) && x < w - dp(80)) { ((MainActivity) getContext()).showTempoDialog(); return true; }
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
+            if (!padsMode && y >= dp(40) && y < dp(70) && x < dp(245)) { ((MainActivity) getContext()).showRenameProject(); return true; }
             if (y >= dp(70) && y < dp(110)) { if (x >= w - dp(220) && x < w - dp(120)) ((MainActivity) getContext()).showHelp(); else if (x >= w - dp(120)) ((MainActivity) getContext()).showAbout(); return true; }
             if (y >= dp(110) && y < dp(154)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
             if (y >= h - dp(110) && y < h - dp(66)) {
