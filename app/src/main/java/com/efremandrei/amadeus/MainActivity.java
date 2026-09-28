@@ -36,6 +36,22 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("Assign pad " + (pad + 1)).setItems(SoundPadEngine.LIBRARY, (dialog, which) -> loopView.assignPad(pad, SoundPadEngine.LIBRARY[which])).show();
     }
 
+    void showAbout() {
+        new AlertDialog.Builder(this)
+                .setTitle("About Amadeus")
+                .setMessage("Loop-first music creation\n\nVersion 0.1.2 (build 3)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus")
+                .setPositiveButton("Close", null)
+                .show();
+    }
+
+    void showHelp() {
+        new AlertDialog.Builder(this)
+                .setTitle("Amadeus Help")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Tap Record or Add Loop to layer another sound. Undo removes the last loop. Tap a track to mute it.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a different built-in sound.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops. Your loop session and pad assignments are saved automatically.")
+                .setPositiveButton("Got it", null)
+                .show();
+    }
+
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == MIC_REQUEST && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) loopView.toggleRecording();
@@ -72,6 +88,7 @@ public class MainActivity extends Activity {
             paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(12)); paint.setColor(secondary); c.drawText(padsMode ? "SOUND PADS" : "LOOP SESSION 01", dp(25), dp(64), paint);
             drawModeTabs(c, surface, text); paint.setColor(text); paint.setTextSize(dp(22)); c.drawText(light ? "☀" : "☾", w - dp(55), dp(42), paint);
             if (padsMode) drawPads(c, w, h, surface, text, secondary); else drawLoops(c, w, h, surface, text, secondary);
+            drawUtilityButtons(c, w, h, surface, text);
             postInvalidateDelayed(80);
         }
 
@@ -94,6 +111,17 @@ public class MainActivity extends Activity {
             paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("PRESET BANK  " + (pads.getActivePreset() + 1) + " / " + SoundPadEngine.PRESETS.length + "  •  tap the bank name to switch", dp(24), h - dp(34), paint);
         }
 
+        private void drawUtilityButtons(Canvas c, float w, float h, int surface, int text) {
+            float y = h - dp(98);
+            drawSmallButton(c, dp(20), y, dp(94), y + dp(32), surface, text, "HELP");
+            drawSmallButton(c, dp(104), y, dp(190), y + dp(32), surface, text, "ABOUT");
+        }
+
+        private void drawSmallButton(Canvas c, float l, float t, float r, float b, int surface, int text, String label) {
+            paint.setColor(surface); c.drawRoundRect(new RectF(l, t, r, b), dp(15), dp(15), paint);
+            paint.setColor(text); paint.setTextSize(dp(10)); c.drawText(label, l + dp(16), t + dp(20), paint);
+        }
+
         private void drawPad(Canvas c, float x, float y, float width, float height, int index, String label, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(x, y, x + width, y + height), dp(20), dp(20), paint); paint.setColor(padColors[index]); c.drawCircle(x + dp(29), y + dp(30), dp(13), paint); paint.setColor(Color.WHITE); paint.setTextSize(dp(11)); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); c.drawText("" + (index + 1), x + dp(25), y + dp(34), paint); paint.setColor(text); paint.setTextSize(dp(17)); c.drawText(label, x + dp(54), y + dp(35), paint); paint.setColor(secondary); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setTextSize(dp(10)); c.drawText(configuring ? "TAP TO ASSIGN" : "PLAY ONE-SHOT", x + dp(54), y + dp(56), paint); }
 
         private void drawTrack(Canvas c, LoopEngine.Track track, int index, float y, float w, int surface, int text, int secondary) { paint.setColor(surface); c.drawRoundRect(new RectF(dp(20), y, w - dp(20), y + dp(80)), dp(18), dp(18), paint); int accent = trackColors[track.colorIndex % trackColors.length]; paint.setColor(accent); c.drawRoundRect(new RectF(dp(20), y, dp(26), y + dp(80)), dp(3), dp(3), paint); paint.setColor(text); paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(14)); c.drawText(track.name, dp(38), y + dp(27), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT); paint.setColor(secondary); paint.setTextSize(dp(11)); c.drawText(track.muted ? "MUTED" : "LOOPING", dp(38), y + dp(49), paint); paint.setColor(track.muted ? Color.rgb(80, 77, 92) : accent); float waveStart = dp(124), waveWidth = w - dp(230), center = y + dp(40); for (int i = 0; i < 22; i++) { float x = waveStart + waveWidth * i / 22f, amp = dp(8 + ((i * 17 + index * 11) % 18)); c.drawRoundRect(new RectF(x, center - amp, x + dp(3), center + amp), dp(2), dp(2), paint); } paint.setColor(track.muted ? Color.rgb(70, 68, 80) : Color.rgb(57, 53, 70)); c.drawRoundRect(new RectF(w - dp(90), y + dp(25), w - dp(38), y + dp(34)), dp(4), dp(4), paint); paint.setColor(track.muted ? secondary : accent); c.drawCircle(w - dp(64), y + dp(29), dp(8), paint); }
@@ -108,6 +136,7 @@ public class MainActivity extends Activity {
             float x = event.getX(), y = event.getY(), w = getWidth(), h = getHeight();
             if (y < dp(70) && x > w - dp(80)) { light = !light; prefs.edit().putBoolean("light_theme", light).apply(); invalidate(); return true; }
             if (y >= dp(70) && y < dp(114)) { if (x < dp(115)) padsMode = false; else if (x < dp(240)) padsMode = true; configuring = false; invalidate(); return true; }
+            if (y >= h - dp(110) && y < h - dp(66)) { if (x < dp(100)) ((MainActivity) getContext()).showHelp(); else if (x < dp(200)) ((MainActivity) getContext()).showAbout(); return true; }
             if (padsMode) {
                 if (y >= dp(110) && y < dp(160) && x < dp(190)) { pads.nextPreset(); configuring = false; invalidate(); return true; }
                 if (y >= dp(110) && y < dp(160) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }
