@@ -13,7 +13,7 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Save the current project inside the app without exporting an audio file
 - Session audio is persisted locally between launches
 - Debug APK export
-- Sound Pads mode with three preset banks and eight one-shot buttons per bank
+- Sound Pads mode with six preset banks and eighteen built-in one-shot sounds
 - Configure mode for assigning each pad from the built-in sound library
 - Help and About dialogs with workflow guidance and app information
 - Informative sound icons with configurable pad display: icons, text, or both
@@ -38,6 +38,13 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Advanced export quality controls for sample rate, WAV bit depth, codec bitrate, normalization, and fade in/out processing
 - Approximate LUFS-target normalization with selectable loudness target and cancellable export progress
 - One-tap Draft, Balanced, and High quality export presets with project-aware filenames
+- MP3 metadata fields for title, artist, album, and embedded artwork through ID3 tags
+- Stereo export with per-track left/right pan controls and automation
+- Pre-export duration, file-size, and clipping-risk estimate
+- Multi-bar arrangement timeline with 1/2/4/8-bar layouts, draggable blocks, trim handles, and timeline undo/redo
+- Automation lanes for volume, pan, reverb, and echo across each arrangement block
+- Direct microphone recording into Sound Pads
+- Importable downloadable sound-pack manifests in plain text or JSON format
 
 ## Build
 
