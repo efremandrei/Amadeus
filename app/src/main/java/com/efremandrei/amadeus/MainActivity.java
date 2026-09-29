@@ -23,6 +23,7 @@ import android.view.WindowInsets;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.CheckBox;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -82,7 +83,7 @@ public class MainActivity extends Activity {
 
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.19 (build 20)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.20 (build 21)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -254,6 +255,8 @@ public class MainActivity extends Activity {
         final ExportManager.Settings defaults = ExportManager.Settings.defaults(format);
         final LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         int pad = (int) (24 * getResources().getDisplayMetrics().density); content.setPadding(pad, 0, pad, 0);
+        TextView presetLabel = new TextView(this); presetLabel.setText("QUICK PRESETS — tap one, then fine-tune"); content.addView(presetLabel);
+        final LinearLayout presetRow = new LinearLayout(this); presetRow.setOrientation(LinearLayout.HORIZONTAL); content.addView(presetRow);
         TextView rateValue = new TextView(this); rateValue.setText("Sample rate 44.1 kHz");
         SeekBar rate = new SeekBar(this); rate.setMax(1); rate.setProgress(defaults.sampleRate == 48000 ? 1 : 0);
         rate.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { rateValue.setText("Sample rate " + (progress == 1 ? "48 kHz" : "44.1 kHz")); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
@@ -279,6 +282,16 @@ public class MainActivity extends Activity {
         final int[] fades = new int[]{0, 10, 50, 100, 250, 500};
         TextView fadeInValue = new TextView(this); fadeInValue.setText("Fade in 0 ms"); SeekBar fadeIn = new SeekBar(this); fadeIn.setMax(fades.length - 1); fadeIn.setProgress(0); fadeIn.setOnSeekBarChangeListener(fadeListener(fadeInValue, "Fade in ", fades)); content.addView(fadeInValue); content.addView(fadeIn);
         TextView fadeOutValue = new TextView(this); fadeOutValue.setText("Fade out 0 ms"); SeekBar fadeOut = new SeekBar(this); fadeOut.setMax(fades.length - 1); fadeOut.setProgress(0); fadeOut.setOnSeekBarChangeListener(fadeListener(fadeOutValue, "Fade out ", fades)); content.addView(fadeOutValue); content.addView(fadeOut);
+
+        Button draft = new Button(this); draft.setText("Draft"); draft.setAllCaps(false); Button balanced = new Button(this); balanced.setText("Balanced"); balanced.setAllCaps(false); Button high = new Button(this); high.setText("High quality"); high.setAllCaps(false);
+        presetRow.addView(draft, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1)); presetRow.addView(balanced, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1)); presetRow.addView(high, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        View.OnClickListener presetListener = view -> {
+            int selectedRate = 44100, selectedBitrate = format == ExportManager.FORMAT_M4A ? 128 : 192, selectedLoudness = -14, selectedFadeIn = 0, selectedFadeOut = 0; boolean selected24Bit = false;
+            if (view == draft) { selectedBitrate = format == ExportManager.FORMAT_M4A ? 64 : 96; selectedLoudness = -16; selectedFadeIn = 10; selectedFadeOut = 50; }
+            else if (view == high) { selectedRate = 48000; selectedBitrate = format == ExportManager.FORMAT_M4A ? 256 : 320; selected24Bit = format == ExportManager.FORMAT_WAV; }
+            rate.setProgress(selectedRate == 48000 ? 1 : 0); bitrate.setProgress(nearestIndex(bitrates, selectedBitrate)); bitDepth.setChecked(selected24Bit); normalize.setChecked(true); loudness.setProgress(nearestIndex(loudnessTargets, selectedLoudness)); fadeIn.setProgress(nearestIndex(fades, selectedFadeIn)); fadeOut.setProgress(nearestIndex(fades, selectedFadeOut));
+        };
+        draft.setOnClickListener(presetListener); balanced.setOnClickListener(presetListener); high.setOnClickListener(presetListener);
 
         ScrollView scroll = new ScrollView(this); scroll.addView(content);
         new AlertDialog.Builder(this).setTitle("Advanced " + exportFormatName(format) + " quality").setMessage(format == ExportManager.FORMAT_WAV ? "Lossless export with optional 24-bit depth, resampling, normalization, and fades." : "Tune the codec bitrate, resampling, normalization, and fades before choosing a save location.").setView(scroll).setNegativeButton("Cancel", null).setPositiveButton("Choose file", (dialog, which) -> {
@@ -312,8 +325,10 @@ public class MainActivity extends Activity {
 
     private void beginExport(int format, ExportManager.Settings settings) {
         pendingExportFormat = format; pendingExportSettings = settings;
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType(ExportManager.mimeType(format)); intent.putExtra(Intent.EXTRA_TITLE, "amadeus-loop." + ExportManager.extension(format)); startActivityForResult(intent, EXPORT_REQUEST);
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType(ExportManager.mimeType(format)); intent.putExtra(Intent.EXTRA_TITLE, safeExportFileName(loopView.projectName()) + "." + ExportManager.extension(format)); startActivityForResult(intent, EXPORT_REQUEST);
     }
+
+    private String safeExportFileName(String name) { String clean = name == null ? "" : name.replaceAll("[^A-Za-z0-9 _-]", "").trim(); return clean.length() == 0 ? "amadeus-project" : clean.replaceAll("\\s+", "-"); }
 
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
