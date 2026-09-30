@@ -154,7 +154,7 @@ public final class ExportManager {
         }
     }
 
-    /** Adds standard iTunes-style M4A metadata only when moov follows mdat, preserving chunk offsets. */
+    /** Adds standard iTunes-style M4A metadata and repairs media offsets if moov precedes mdat. */
     private static byte[] addM4aMetadata(byte[] source, Settings settings) {
         if (source == null || source.length < 16 || (settings.title.isEmpty() && settings.artist.isEmpty() && settings.album.isEmpty() && (settings.artwork == null || settings.artwork.length == 0))) return source;
         int moov = -1, moovSize = 0, mdat = -1, offset = 0;
@@ -165,11 +165,27 @@ public final class ExportManager {
             if ("mdat".equals(type)) mdat = offset;
             offset += size;
         }
-        if (moov < 0 || mdat < 0 || moov < mdat) return source;
+        if (moov < 0 || mdat < 0) return source;
         byte[] udta = m4aUdta(settings); if (udta.length == 0) return source;
         byte[] result = new byte[source.length + udta.length]; int moovEnd = moov + moovSize;
-        System.arraycopy(source, 0, result, 0, moovEnd); writeIntBE(result, moov, moovSize + udta.length); System.arraycopy(udta, 0, result, moovEnd, udta.length); System.arraycopy(source, moovEnd, result, moovEnd + udta.length, source.length - moovEnd); return result;
+        System.arraycopy(source, 0, result, 0, moovEnd); writeIntBE(result, moov, moovSize + udta.length); System.arraycopy(udta, 0, result, moovEnd, udta.length); System.arraycopy(source, moovEnd, result, moovEnd + udta.length, source.length - moovEnd);
+        if (mdat > moov) patchChunkOffsets(result, moov + 8, moovEnd, udta.length);
+        return result;
     }
+
+    private static void patchChunkOffsets(byte[] data, int start, int end, int delta) {
+        int offset = start;
+        while (offset + 8 <= end) {
+            int size = readIntBE(data, offset); if (size < 8 || offset + size > end) return;
+            String type = new String(data, offset + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1);
+            if ("stco".equals(type) && size >= 16) { int count = readIntBE(data, offset + 12); for (int i = 0; i < count && offset + 16 + i * 4 + 4 <= offset + size; i++) writeIntBE(data, offset + 16 + i * 4, readIntBE(data, offset + 16 + i * 4) + delta); }
+            else if ("co64".equals(type) && size >= 16) { int count = readIntBE(data, offset + 12); for (int i = 0; i < count && offset + 16 + i * 8 + 8 <= offset + size; i++) { int at = offset + 16 + i * 8; long value = readLongBE(data, at) + delta; writeLongBE(data, at, value); } }
+            else if (isContainerAtom(type)) patchChunkOffsets(data, offset + 8 + ("meta".equals(type) ? 4 : 0), offset + size, delta);
+            offset += size;
+        }
+    }
+
+    private static boolean isContainerAtom(String type) { return "moov".equals(type) || "trak".equals(type) || "mdia".equals(type) || "minf".equals(type) || "stbl".equals(type) || "edts".equals(type) || "dinf".equals(type) || "mvex".equals(type) || "moof".equals(type) || "traf".equals(type) || "udta".equals(type) || "meta".equals(type); }
 
     private static byte[] m4aUdta(Settings settings) {
         ByteArrayOutputStream items = new ByteArrayOutputStream();
@@ -183,6 +199,8 @@ public final class ExportManager {
     private static void writeIntBE(ByteArrayOutputStream out, int value) { out.write((value >> 24) & 0xff); out.write((value >> 16) & 0xff); out.write((value >> 8) & 0xff); out.write(value & 0xff); }
     private static void writeIntBE(byte[] bytes, int offset, int value) { bytes[offset] = (byte) (value >> 24); bytes[offset + 1] = (byte) (value >> 16); bytes[offset + 2] = (byte) (value >> 8); bytes[offset + 3] = (byte) value; }
     private static int readIntBE(byte[] bytes, int offset) { return ((bytes[offset] & 0xff) << 24) | ((bytes[offset + 1] & 0xff) << 16) | ((bytes[offset + 2] & 0xff) << 8) | (bytes[offset + 3] & 0xff); }
+    private static long readLongBE(byte[] bytes, int offset) { return ((long) readIntBE(bytes, offset) << 32) | (readIntBE(bytes, offset + 4) & 0xffffffffL); }
+    private static void writeLongBE(byte[] bytes, int offset, long value) { writeIntBE(bytes, offset, (int) (value >> 32)); writeIntBE(bytes, offset + 4, (int) value); }
 
     private static void drainAac(MediaCodec codec, MediaMuxer muxer, short[] pcm, int sampleRate, int channels, ProgressListener listener) throws Exception {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo(); int sampleOffset = 0, track = -1; boolean inputDone = false, outputDone = false, muxerStarted = false;

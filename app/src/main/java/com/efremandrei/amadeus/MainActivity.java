@@ -80,12 +80,13 @@ public class MainActivity extends Activity {
     }
 
     void showPadChooser(final int pad) {
-        String[] options = new String[SoundPadEngine.LIBRARY.length + 3];
+        String[] options = new String[SoundPadEngine.LIBRARY.length + 4];
         System.arraycopy(SoundPadEngine.LIBRARY, 0, options, 0, SoundPadEngine.LIBRARY.length);
         options[SoundPadEngine.LIBRARY.length] = "Import audio file…";
         options[SoundPadEngine.LIBRARY.length + 1] = "Record from microphone…";
         options[SoundPadEngine.LIBRARY.length + 2] = "Import sound pack…";
-        new AlertDialog.Builder(this).setTitle("Assign pad " + (pad + 1)).setItems(options, (dialog, which) -> { if (which == SoundPadEngine.LIBRARY.length) beginImportPad(pad); else if (which == SoundPadEngine.LIBRARY.length + 1) beginPadRecording(pad); else if (which == SoundPadEngine.LIBRARY.length + 2) beginSoundPackImport(); else loopView.assignPad(pad, SoundPadEngine.LIBRARY[which]); }).show();
+        options[SoundPadEngine.LIBRARY.length + 3] = "Download sound pack from URL…";
+        new AlertDialog.Builder(this).setTitle("Assign pad " + (pad + 1)).setItems(options, (dialog, which) -> { if (which == SoundPadEngine.LIBRARY.length) beginImportPad(pad); else if (which == SoundPadEngine.LIBRARY.length + 1) beginPadRecording(pad); else if (which == SoundPadEngine.LIBRARY.length + 2) beginSoundPackImport(); else if (which == SoundPadEngine.LIBRARY.length + 3) showSoundPackDownload(); else loopView.assignPad(pad, SoundPadEngine.LIBRARY[which]); }).show();
     }
 
     private void beginPadRecording(int pad) { pendingRecordPad = pad; if (Build.VERSION.SDK_INT >= 23 && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, PAD_MIC_REQUEST); else startPadRecording(pad); }
@@ -108,9 +109,31 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT); intent.addCategory(Intent.CATEGORY_OPENABLE); intent.setType("*/*"); intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); startActivityForResult(intent, SOUND_PACK_REQUEST);
     }
 
+    private void showSoundPackDownload() {
+        EditText url = metadataField("HTTPS sound-pack ZIP URL", ""); url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI); url.setText("https://"); url.setSelection(url.length());
+        new AlertDialog.Builder(this).setTitle("Download a sound pack").setMessage("Use an HTTPS link to an Amadeus ZIP pack. The archive needs a manifest.txt and up to eight audio samples.").setView(url).setNegativeButton("Cancel", null).setPositiveButton("Download", (dialog, which) -> downloadSoundPack(url.getText().toString().trim())).show();
+    }
+
+    private void downloadSoundPack(String address) {
+        new Thread(() -> {
+            String result = null; java.io.File downloaded = null; java.net.HttpURLConnection connection = null;
+            try {
+                java.net.URL url = new java.net.URL(address); if (!"https".equalsIgnoreCase(url.getProtocol())) throw new IllegalArgumentException("Use an HTTPS link");
+                connection = (java.net.HttpURLConnection) url.openConnection(); connection.setConnectTimeout(15000); connection.setReadTimeout(20000); connection.setInstanceFollowRedirects(true); connection.connect();
+                if (!"https".equalsIgnoreCase(connection.getURL().getProtocol())) throw new IllegalArgumentException("Pack download redirected away from HTTPS");
+                if (connection.getResponseCode() < 200 || connection.getResponseCode() >= 300) throw new IllegalStateException("Download failed");
+                downloaded = java.io.File.createTempFile("amadeus-pack-", ".zip", getCacheDir());
+                try (InputStream in = connection.getInputStream(); java.io.FileOutputStream out = new java.io.FileOutputStream(downloaded)) { byte[] buffer = new byte[8192]; int read, total = 0; while ((read = in.read(buffer)) >= 0) { total += read; if (total > 32 * 1024 * 1024) throw new IllegalArgumentException("Pack exceeds the 32 MB limit"); out.write(buffer, 0, read); } }
+                result = loopView.importSoundPack(Uri.fromFile(downloaded));
+            } catch (Exception ignored) { }
+            finally { if (connection != null) connection.disconnect(); if (downloaded != null && !downloaded.delete()) downloaded.deleteOnExit(); }
+            final String packName = result; runOnUiThread(() -> Toast.makeText(this, packName == null ? "Could not download or import that sound pack" : packName + " downloaded and imported", Toast.LENGTH_LONG).show());
+        }, "Amadeus-pack-download").start();
+    }
+
     void showAbout() {
         TextView message = new TextView(this);
-        message.setText("Loop-first music creation\n\nVersion 0.1.21 (build 22)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
+        message.setText("Loop-first music creation\n\nVersion 0.1.22 (build 23)\n\nCreated by Andrei Efremuahkin\nandrei.efr@gmail.com\n\nhttps://github.com/efremandrei/Amadeus");
         message.setAutoLinkMask(Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         Linkify.addLinks(message, Linkify.WEB_URLS | Linkify.EMAIL_ADDRESSES);
         message.setLinksClickable(true);
@@ -127,7 +150,7 @@ public class MainActivity extends Activity {
     void showHelp() {
         new AlertDialog.Builder(this)
                 .setTitle("Amadeus Help")
-                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. The first loop is snapped to the nearest beat using the selected BPM. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Reverb, and Echo controls.\n\nTIMELINE\nOpen Timeline to see the arrangement. Choose 1–8 bars, drag a colored block to move it, or drag its left and right handles to trim the active range. Long press a block for Duplicate, Move up/down, Reset trim, and track controls. Use Undo and Redo after timeline edits.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound instantly. Tap the preset name to switch banks. Tap Configure, then tap a pad to assign a built-in sound, import audio, record directly into the pad, or import a downloadable sound-pack manifest. A pack is plain text or JSON containing eight library names, for example: Pads=Kick,Snare,Hi-Hat,Clap,Bass,Tone,Chime,Zap.\n\nEXPORT\nTap Export to choose format and advanced quality controls: title, artist, album, MP3 artwork, sample rate, stereo pan, codec bitrate, WAV bit depth, normalization, loudness target, fades, estimated size, and clipping warning. MP3 exports embed ID3 metadata and artwork.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops and pad recording. Your loop session and pad assignments are saved automatically.")
+                .setMessage("LOOPS\nTap Record, make your first sound, then tap again to close the loop. Recordings repeat across the selected arrangement region. Tap a track to mute it. Long press a track for Delete, Mute, Solo, Volume, Effects, and Automation controls.\n\nTIMELINE\nChoose 1–16 loop bars. Drag a colored clip to move it, drag an edge to trim, and drag a V (volume), P (pan), R (reverb), or E (echo) lane vertically to edit its start or end automation value. Long press a clip for Duplicate, Move up/down, Reset trim, and track controls. Undo and Redo history is saved with the project.\n\nTEMPO\nTap the BPM pill to set the tempo from 40–220 BPM and optionally enable a metronome click.\n\nPROJECTS\nTap the project name under Amadeus to rename it. Tap Save in the bottom action bar to save the current project inside Amadeus without creating or exporting a music file.\n\nSOUND PADS\nTap a pad to play its sound. Enable Capture in the bottom bar, then tap pads to record the performance as editable timeline clips included in playback and export. Tap the preset name to switch banks. Configure pads to assign a built-in sound, import audio, or record from the microphone. Import a sound-pack ZIP from storage or download one from an HTTPS URL. ZIP packs need manifest.txt with Name=Pack Name and Pads=Kick:kick.wav,Snare:snare.wav,... (eight entries); include each referenced audio file in the ZIP.\n\nEXPORT\nTap Export to choose format and advanced quality controls: title, artist, album, artwork, sample rate, stereo pan, codec bitrate, WAV bit depth, normalization, loudness target, fades, live size estimate, and clipping warning. MP3 tags use ID3; M4A tags are written into MP4 metadata while preserving chunk offsets.\n\nTIPS\nUse headphones while recording to avoid feedback. Microphone permission is needed for loops and pad recording. Your loop session, undo history, and pad assignments are saved automatically.")
                 .setNeutralButton("Tutorials", (dialog, which) -> showTutorialChooser())
                 .setPositiveButton("Got it", null)
                 .show();
@@ -180,8 +203,8 @@ public class MainActivity extends Activity {
     }
 
     void showArrangementDialog() {
-        String[] options = {"1 bar", "2 bars", "4 bars", "8 bars"};
-        new AlertDialog.Builder(this).setTitle("Arrangement length").setMessage("Choose how many musical bars the Timeline can hold.").setItems(options, (dialog, which) -> loopView.setArrangementBars(new int[]{1, 2, 4, 8}[which])).show();
+        String[] options = {"1 bar", "2 bars", "4 bars", "8 bars", "16 bars"};
+        new AlertDialog.Builder(this).setTitle("Arrangement length").setMessage("Choose how many loop bars the Timeline can hold.").setItems(options, (dialog, which) -> loopView.setArrangementBars(new int[]{1, 2, 4, 8, 16}[which])).show();
     }
 
     void showRenameProject() {
@@ -309,6 +332,7 @@ public class MainActivity extends Activity {
         pendingArtwork = null; pendingArtworkMime = "image/jpeg";
         final LinearLayout content = new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL);
         int pad = (int) (24 * getResources().getDisplayMetrics().density); content.setPadding(pad, 0, pad, 0);
+        final TextView estimate = new TextView(this);
         TextView presetLabel = new TextView(this); presetLabel.setText("QUICK PRESETS — tap one, then fine-tune"); content.addView(presetLabel);
         final LinearLayout presetRow = new LinearLayout(this); presetRow.setOrientation(LinearLayout.HORIZONTAL); content.addView(presetRow);
         EditText title = metadataField("Title", projectNameForExport()); EditText artist = metadataField("Artist", "Andrei Efremuahkin"); EditText album = metadataField("Album", "Amadeus Sessions"); content.addView(title); content.addView(artist); content.addView(album);
@@ -326,7 +350,7 @@ public class MainActivity extends Activity {
         if (format == ExportManager.FORMAT_WAV) bitrateValue.setText("WAV uses lossless PCM");
         content.addView(bitrateValue); bitrate.setVisibility(format == ExportManager.FORMAT_WAV ? View.GONE : View.VISIBLE); content.addView(bitrate);
 
-        final CheckBox bitDepth = new CheckBox(this); bitDepth.setText("24-bit WAV container (larger file)"); bitDepth.setChecked(defaults.bitDepth == 24); bitDepth.setVisibility(format == ExportManager.FORMAT_WAV ? View.VISIBLE : View.GONE); content.addView(bitDepth);
+        final CheckBox bitDepth = new CheckBox(this); bitDepth.setText("24-bit WAV file (mic source is 16-bit)"); bitDepth.setChecked(defaults.bitDepth == 24); bitDepth.setVisibility(format == ExportManager.FORMAT_WAV ? View.VISIBLE : View.GONE); content.addView(bitDepth);
         final CheckBox stereo = new CheckBox(this); stereo.setText("Stereo export with track pan"); stereo.setChecked(false); content.addView(stereo);
         final CheckBox normalize = new CheckBox(this); normalize.setText("Normalize safely to prevent clipping"); normalize.setChecked(defaults.normalize); content.addView(normalize);
 
@@ -339,7 +363,15 @@ public class MainActivity extends Activity {
         final int[] fades = new int[]{0, 10, 50, 100, 250, 500};
         TextView fadeInValue = new TextView(this); fadeInValue.setText("Fade in 0 ms"); SeekBar fadeIn = new SeekBar(this); fadeIn.setMax(fades.length - 1); fadeIn.setProgress(0); fadeIn.setOnSeekBarChangeListener(fadeListener(fadeInValue, "Fade in ", fades)); content.addView(fadeInValue); content.addView(fadeIn);
         TextView fadeOutValue = new TextView(this); fadeOutValue.setText("Fade out 0 ms"); SeekBar fadeOut = new SeekBar(this); fadeOut.setMax(fades.length - 1); fadeOut.setProgress(0); fadeOut.setOnSeekBarChangeListener(fadeListener(fadeOutValue, "Fade out ", fades)); content.addView(fadeOutValue); content.addView(fadeOut);
-        TextView estimate = new TextView(this); estimate.setText(exportEstimateText(format, defaults.sampleRate, defaults.bitRateKbps, defaults.bitDepth, defaults.normalize, stereo.isChecked())); content.addView(estimate);
+        estimate.setText(exportEstimateText(format, defaults.sampleRate, defaults.bitRateKbps, defaults.bitDepth, defaults.normalize, stereo.isChecked())); content.addView(estimate);
+
+        Runnable refreshEstimate = () -> estimate.setText(exportEstimateText(format, rate.getProgress() == 1 ? 48000 : 44100, bitrates[bitrate.getProgress()], bitDepth.isChecked() ? 24 : 16, normalize.isChecked(), stereo.isChecked()));
+        rate.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { rateValue.setText("Sample rate " + (progress == 1 ? "48 kHz" : "44.1 kHz")); refreshEstimate.run(); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        bitrate.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { bitrateValue.setText("Bitrate " + bitrates[progress] + " kbps"); refreshEstimate.run(); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        loudness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { loudnessValue.setText("Loudness target " + loudnessTargets[progress] + " LUFS"); refreshEstimate.run(); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        fadeIn.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { fadeInValue.setText("Fade in " + fades[progress] + " ms"); refreshEstimate.run(); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        fadeOut.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() { @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { fadeOutValue.setText("Fade out " + fades[progress] + " ms"); refreshEstimate.run(); } @Override public void onStartTrackingTouch(SeekBar bar) { } @Override public void onStopTrackingTouch(SeekBar bar) { } });
+        View.OnClickListener refreshChecks = view -> refreshEstimate.run(); bitDepth.setOnClickListener(refreshChecks); stereo.setOnClickListener(refreshChecks); normalize.setOnClickListener(refreshChecks);
 
         Button draft = new Button(this); draft.setText("Draft"); draft.setAllCaps(false); Button balanced = new Button(this); balanced.setText("Balanced"); balanced.setAllCaps(false); Button high = new Button(this); high.setText("High quality"); high.setAllCaps(false);
         presetRow.addView(draft, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1)); presetRow.addView(balanced, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1)); presetRow.addView(high, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -347,7 +379,7 @@ public class MainActivity extends Activity {
             int selectedRate = 44100, selectedBitrate = format == ExportManager.FORMAT_M4A ? 128 : 192, selectedLoudness = -14, selectedFadeIn = 0, selectedFadeOut = 0; boolean selected24Bit = false;
             if (view == draft) { selectedBitrate = format == ExportManager.FORMAT_M4A ? 64 : 96; selectedLoudness = -16; selectedFadeIn = 10; selectedFadeOut = 50; }
             else if (view == high) { selectedRate = 48000; selectedBitrate = format == ExportManager.FORMAT_M4A ? 256 : 320; selected24Bit = format == ExportManager.FORMAT_WAV; }
-            rate.setProgress(selectedRate == 48000 ? 1 : 0); bitrate.setProgress(nearestIndex(bitrates, selectedBitrate)); bitDepth.setChecked(selected24Bit); normalize.setChecked(true); loudness.setProgress(nearestIndex(loudnessTargets, selectedLoudness)); fadeIn.setProgress(nearestIndex(fades, selectedFadeIn)); fadeOut.setProgress(nearestIndex(fades, selectedFadeOut)); estimate.setText(exportEstimateText(format, selectedRate, selectedBitrate, selected24Bit ? 24 : 16, true, stereo.isChecked()));
+            rate.setProgress(selectedRate == 48000 ? 1 : 0); bitrate.setProgress(nearestIndex(bitrates, selectedBitrate)); bitDepth.setChecked(selected24Bit); normalize.setChecked(true); loudness.setProgress(nearestIndex(loudnessTargets, selectedLoudness)); fadeIn.setProgress(nearestIndex(fades, selectedFadeIn)); fadeOut.setProgress(nearestIndex(fades, selectedFadeOut)); refreshEstimate.run();
         };
         draft.setOnClickListener(presetListener); balanced.setOnClickListener(presetListener); high.setOnClickListener(presetListener);
 
@@ -416,11 +448,12 @@ public class MainActivity extends Activity {
         }
         if (requestCode == SOUND_PACK_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
             try {
-                InputStream input = getContentResolver().openInputStream(data.getData()); ByteArrayOutputStream bytes = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int read, total = 0;
-                while (input != null && (read = input.read(buffer)) >= 0 && total < 64 * 1024) { int allowed = Math.min(read, 64 * 1024 - total); bytes.write(buffer, 0, allowed); total += allowed; if (allowed < read) break; }
-                if (input != null) input.close();
-                String packName = loopView.importSoundPack(bytes.toString("UTF-8"));
-                Toast.makeText(this, packName == null ? "Sound pack not recognized" : packName + " imported", Toast.LENGTH_LONG).show();
+                Uri packUri = data.getData();
+                new Thread(() -> {
+                    String packName = loopView.importSoundPack(packUri);
+                    if (packName == null) try { InputStream input = getContentResolver().openInputStream(packUri); ByteArrayOutputStream bytes = new ByteArrayOutputStream(); byte[] buffer = new byte[4096]; int read, total = 0; while (input != null && (read = input.read(buffer)) >= 0 && total < 64 * 1024) { int allowed = Math.min(read, 64 * 1024 - total); bytes.write(buffer, 0, allowed); total += allowed; if (allowed < read) break; } if (input != null) input.close(); packName = loopView.importSoundPack(bytes.toString("UTF-8")); } catch (Exception ignored) { }
+                    final String result = packName; runOnUiThread(() -> Toast.makeText(this, result == null ? "Sound pack not recognized" : result + " imported", Toast.LENGTH_LONG).show());
+                }, "Amadeus-pack-import").start();
             } catch (Exception error) { Toast.makeText(this, "Sound pack could not be imported", Toast.LENGTH_LONG).show(); }
         }
     }
@@ -465,7 +498,9 @@ public class MainActivity extends Activity {
         private final SoundPadEngine pads;
         private final MetronomeEngine metronome;
         private final SharedPreferences prefs;
-        private boolean light, padsMode, timelineMode, configuring;
+        private boolean light, padsMode, timelineMode, configuring, padCapture;
+        private long padCaptureStart;
+        private int padCaptureStartPosition;
         private int tempoBpm;
         private boolean metronomeEnabled;
         private int padDisplayMode;
@@ -478,6 +513,8 @@ public class MainActivity extends Activity {
         private int touchDownTrack = -1;
         private boolean scrolling, timelineDragging;
         private int timelineDragMode;
+        private int automationLane = -1;
+        private int automationPoint;
         private final int[] trackColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53) };
         private final int[] padColors = { Color.rgb(167, 139, 250), Color.rgb(45, 212, 191), Color.rgb(251, 146, 60), Color.rgb(244, 114, 182), Color.rgb(96, 165, 250), Color.rgb(163, 230, 53), Color.rgb(251, 191, 36), Color.rgb(129, 140, 248) };
 
@@ -508,6 +545,7 @@ public class MainActivity extends Activity {
         void setTrackPan(int index, float pan) { engine.setTrackPan(index, pan); invalidate(); }
         void setTrackEffects(int index, float reverb, float delay) { engine.setTrackEffects(index, reverb, delay); invalidate(); }
         void setTrackAutomation(int index, float volumeStart, float volumeEnd, float panStart, float panEnd, float reverbStart, float reverbEnd, float delayStart, float delayEnd) { engine.setTrackAutomation(index, volumeStart, volumeEnd, panStart, panEnd, reverbStart, reverbEnd, delayStart, delayEnd); invalidate(); }
+        void setAutomationPointTransient(int index, int lane, int point, float value) { engine.setAutomationPointTransient(index, lane, point, value); invalidate(); }
         void deleteTrack(int index) { engine.deleteTrack(index); invalidate(); }
         void setTrackRange(int index, int start, int end) { engine.setTrackRange(index, start, end); invalidate(); }
         void resetTrackRange(int index) { engine.resetTrackRange(index); invalidate(); }
@@ -533,6 +571,14 @@ public class MainActivity extends Activity {
         void importPad(int pad, Uri uri, String displayName) { pads.importPad(pad, uri, displayName); invalidate(); }
         void recordPad(int pad, short[] pcm, String displayName) { pads.recordPad(pad, pcm, displayName); invalidate(); }
         String importSoundPack(String text) { String name = pads.importSoundPack(text); invalidate(); return name; }
+        String importSoundPack(Uri uri) { String name = pads.importSoundPack(uri); if (name != null) invalidate(); return name; }
+        void togglePadCapture() { padCapture = !padCapture; padCaptureStart = SystemClock.uptimeMillis(); padCaptureStartPosition = engine.getPlaybackPosition(); invalidate(); Toast.makeText(getContext(), padCapture ? "Pad capture on — taps will be added to the timeline" : "Pad capture stopped", Toast.LENGTH_SHORT).show(); }
+        void playCapturedPad(int pad) {
+            long tapTime = SystemClock.uptimeMillis();
+            pads.playPad(pad);
+            if (padCapture) { int arrangementLength = engine.getArrangementLength(); if (arrangementLength <= 0) arrangementLength = Math.max(1, (int) (LoopEngine.SAMPLE_RATE * 60f / tempoBpm * 16)); int elapsedSamples = Math.max(0, (int) ((tapTime - padCaptureStart) * LoopEngine.SAMPLE_RATE / 1000L)); engine.addPadHit(pads.getSoundForPad(pad), pads.getPcmForPad(pad), (padCaptureStartPosition + elapsedSamples) % arrangementLength); }
+            invalidate();
+        }
         void loadDemo(int index) { engine.loadDemo(DemoLibrary.get(index)); trackScrollOffset = 0; padsMode = false; timelineMode = false; configuring = false; invalidate(); }
         void setSystemBarInsets(int top, int bottom) { topInset = Math.max(0, top); bottomInset = Math.max(0, bottom); invalidate(); }
         void exportToUri(final Uri destination, final int format, final ExportManager.Settings settings, final ExportManager.ProgressListener progress) {
@@ -589,7 +635,7 @@ public class MainActivity extends Activity {
         private void drawTimeline(Canvas c, float w, float h, int surface, int text, int secondary) {
             drawPill(c, dp(20), dp(156), dp(152), dp(190), surface, "ARRANGE");
             drawPill(c, w - dp(152), dp(156), w - dp(20), dp(190), surface, arrangementBars() + " BARS");
-            paint.setColor(secondary); paint.setTextSize(dp(12)); c.drawText("Move blocks, or drag either edge to trim", dp(24), dp(214), paint);
+            paint.setColor(secondary); paint.setTextSize(dp(11)); c.drawText("Move / trim clips • drag V P R E lanes vertically to automate", dp(24), dp(214), paint);
             List<LoopEngine.Track> tracks = engine.snapshotTracks();
             float top = dp(230), rowHeight = dp(96), viewportBottom = h - dp(190), rulerLeft = dp(48), rulerWidth = Math.max(dp(1), w - dp(68));
             maxTrackScroll = Math.max(0, top + tracks.size() * rowHeight - viewportBottom); trackScrollOffset = Math.max(0, Math.min(trackScrollOffset, maxTrackScroll));
@@ -620,9 +666,11 @@ public class MainActivity extends Activity {
                     int waveBars = Math.max(4, Math.min(28, (int) ((block.width() - dp(20)) / dp(7))));
                     for (int bar = 0; bar < waveBars; bar++) { float bx = block.left + dp(10) + (block.width() - dp(20)) * bar / Math.max(1, waveBars - 1); float amp = dp(6 + ((bar * 13 + i * 7) % 12)); c.drawRoundRect(new RectF(bx, block.centerY() - amp, bx + dp(2), block.centerY() + amp), dp(1), dp(1), paint); }
                     paint.setColor(Color.WHITE); c.drawRoundRect(new RectF(block.left, block.top, block.left + dp(4), block.bottom), dp(2), dp(2), paint); c.drawRoundRect(new RectF(block.right - dp(4), block.top, block.right, block.bottom), dp(2), dp(2), paint);
-                    drawAutomationLane(c, block.left, block.right, y + dp(70), tracks.get(i).volume, tracks.get(i).volumeEnd, Color.WHITE);
-                    drawAutomationLane(c, block.left, block.right, y + dp(78), (tracks.get(i).pan + 1f) / 2f, (tracks.get(i).panEnd + 1f) / 2f, Color.rgb(45, 212, 191));
-                    drawAutomationLane(c, block.left, block.right, y + dp(86), (tracks.get(i).reverb + tracks.get(i).delay) / 2f, (tracks.get(i).reverbEnd + tracks.get(i).delayEnd) / 2f, Color.rgb(251, 146, 60));
+                    drawAutomationLane(c, block.left, block.right, y + dp(69), tracks.get(i).volumeCurve, Color.WHITE, false);
+                    drawAutomationLane(c, block.left, block.right, y + dp(76), tracks.get(i).panCurve, Color.rgb(45, 212, 191), true);
+                    drawAutomationLane(c, block.left, block.right, y + dp(83), tracks.get(i).reverbCurve, Color.rgb(251, 146, 60), false);
+                    drawAutomationLane(c, block.left, block.right, y + dp(90), tracks.get(i).delayCurve, Color.rgb(96, 165, 250), false);
+                    paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD); paint.setTextSize(dp(7)); paint.setColor(Color.WHITE); c.drawText("V", dp(30), y + dp(71), paint); c.drawText("P", dp(30), y + dp(78), paint); c.drawText("R", dp(30), y + dp(85), paint); c.drawText("E", dp(30), y + dp(92), paint); paint.setTypeface(android.graphics.Typeface.DEFAULT);
                 }
             }
             c.restore();
@@ -635,7 +683,8 @@ public class MainActivity extends Activity {
         private float timelineBlockLeft(int index, float w) { int length = Math.max(1, engine.getArrangementLength()); return dp(48) + Math.max(0, Math.min(length - 1, engine.trackStart(index))) * timelineWidth(w) / length; }
         private float timelineBlockRight(int index, float w) { int length = Math.max(1, engine.getArrangementLength()); return dp(48) + Math.max(1, Math.min(length, engine.trackEnd(index))) * timelineWidth(w) / length; }
         private float timelineWidth(float w) { return Math.max(dp(1), w - dp(68)); }
-        private void drawAutomationLane(Canvas c, float left, float right, float y, float start, float end, int color) { paint.setColor(Color.argb(90, Color.red(color), Color.green(color), Color.blue(color))); paint.setStrokeWidth(dp(1)); c.drawLine(left, y, right, y, paint); paint.setColor(color); c.drawLine(left, y + dp(3) - dp(6) * Math.max(0f, Math.min(1f, start)), right, y + dp(3) - dp(6) * Math.max(0f, Math.min(1f, end)), paint); }
+        private void drawAutomationLane(Canvas c, float left, float right, float y, float[] points, int color, boolean pan) { paint.setColor(Color.argb(90, Color.red(color), Color.green(color), Color.blue(color))); paint.setStrokeWidth(dp(1)); c.drawLine(left, y, right, y, paint); paint.setColor(color); float lastX = left, lastY = y + dp(3) - dp(6) * laneValue(points[0], pan); for (int i = 1; i < points.length; i++) { float x = left + (right - left) * i / (points.length - 1f), py = y + dp(3) - dp(6) * laneValue(points[i], pan); c.drawLine(lastX, lastY, x, py, paint); c.drawCircle(x, py, dp(1.7f), paint); lastX = x; lastY = py; } c.drawCircle(left, y + dp(3) - dp(6) * laneValue(points[0], pan), dp(1.7f), paint); }
+        private float laneValue(float value, boolean pan) { float normalized = pan ? (value + 1f) / 2f : value; return Math.max(0f, Math.min(1f, normalized)); }
 
         private void drawTrackScrollbar(Canvas c, float w, float top, float bottom, int secondary) {
             float area = Math.max(dp(1), bottom - top), thumb = Math.max(dp(28), area * area / (area + maxTrackScroll)), travel = Math.max(0, area - thumb), y = top + (maxTrackScroll == 0 ? 0 : travel * trackScrollOffset / maxTrackScroll); paint.setColor(Color.argb(80, Color.red(secondary), Color.green(secondary), Color.blue(secondary))); c.drawRoundRect(new RectF(w - dp(11), top, w - dp(7), bottom), dp(2), dp(2), paint); paint.setColor(Color.argb(210, Color.red(secondary), Color.green(secondary), Color.blue(secondary))); c.drawRoundRect(new RectF(w - dp(12), y, w - dp(6), y + thumb), dp(3), dp(3), paint);
@@ -661,8 +710,10 @@ public class MainActivity extends Activity {
                 drawSmallButton(c, left + buttonW * 2 + gap * 2, y, left + buttonW * 3 + gap * 2, y + dp(32), surface, text, "EXPORT");
                 drawSmallButton(c, left + buttonW * 3 + gap * 3, y, w - dp(20), y + dp(32), surface, text, "EXIT");
             } else {
-                drawSmallButton(c, w - dp(236), y, w - dp(132), y + dp(32), surface, text, "SAVE");
-                drawSmallButton(c, w - dp(124), y, w - dp(20), y + dp(32), surface, text, "EXIT");
+                float gap = dp(7), left = dp(20), buttonW = (w - dp(40) - gap * 2) / 3f;
+                drawSmallButton(c, left, y, left + buttonW, y + dp(32), surface, text, "SAVE");
+                drawSmallButton(c, left + buttonW + gap, y, left + buttonW * 2 + gap, y + dp(32), padCapture ? Color.rgb(167, 139, 250) : surface, text, padCapture ? "CAPTURING" : "CAPTURE");
+                drawSmallButton(c, left + (buttonW + gap) * 2, y, w - dp(20), y + dp(32), surface, text, "EXIT");
             }
         }
 
@@ -711,7 +762,7 @@ public class MainActivity extends Activity {
 
         @Override public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; touchDownAt = SystemClock.uptimeMillis(); touchDownTrack = -1; scrolling = false; timelineDragging = false; timelineDragMode = 0;
+                touchDownX = event.getX(); touchDownY = event.getY() - topInset; lastTouchY = touchDownY; touchDownAt = SystemClock.uptimeMillis(); touchDownTrack = -1; scrolling = false; timelineDragging = false; timelineDragMode = 0; automationLane = -1;
                 if (!padsMode) {
                     float contentH = Math.max(dp(1), getHeight() - topInset - bottomInset);
                     if (timelineMode) {
@@ -719,10 +770,15 @@ public class MainActivity extends Activity {
                         if (touchDownY >= top && touchDownY < Math.max(top, contentH - dp(190))) {
                             touchDownTrack = (int) ((touchDownY - top + trackScrollOffset) / rowHeight);
                             if (touchDownTrack >= 0 && touchDownTrack < engine.snapshotTracks().size()) {
+                                float rowY = top + touchDownTrack * rowHeight - trackScrollOffset, rowOffset = touchDownY - rowY;
+                                if (rowOffset >= dp(65) && rowOffset < dp(95)) { automationLane = Math.min(3, (int) ((rowOffset - dp(65)) / dp(7.5f))); float laneLeft = timelineBlockLeft(touchDownTrack, getWidth()), laneRight = timelineBlockRight(touchDownTrack, getWidth()); automationPoint = Math.max(0, Math.min(3, Math.round((event.getX() - laneLeft) / Math.max(dp(1), laneRight - laneLeft) * 3f))); timelineDragMode = 4; }
+                                else {
+                                automationLane = -1;
                                 float left = timelineBlockLeft(touchDownTrack, getWidth()), right = timelineBlockRight(touchDownTrack, getWidth());
                                 if (event.getX() >= left - dp(12) && event.getX() <= right + dp(12)) {
                                     timelineDragMode = event.getX() - left <= dp(14) ? 2 : event.getX() - right >= -dp(14) ? 3 : 1;
                                 } else { touchDownTrack = -1; timelineDragMode = 0; }
+                                }
                             }
                         }
                     } else if (touchDownY >= dp(168) && touchDownY < Math.max(dp(168), contentH - dp(190))) {
@@ -733,7 +789,13 @@ public class MainActivity extends Activity {
             }
             if (event.getAction() == MotionEvent.ACTION_MOVE) {
                 float currentX = event.getX(), currentY = event.getY() - topInset, deltaX = currentX - touchDownX, deltaY = currentY - touchDownY;
-                if (timelineMode && touchDownTrack >= 0 && timelineDragMode > 0 && Math.abs(deltaX) > dp(8) && Math.abs(deltaX) >= Math.abs(deltaY)) {
+                if (timelineMode && touchDownTrack >= 0 && timelineDragMode == 4 && automationLane >= 0 && Math.abs(deltaY) > dp(3)) {
+                    if (!timelineDragging) beginTimelineEdit(); timelineDragging = true;
+                    float rowTop = dp(230) + touchDownTrack * dp(96) - trackScrollOffset + dp(65 + automationLane * 7.5f);
+                    float value = Math.max(0f, Math.min(1f, .5f - (currentY - rowTop) / dp(14)));
+                    setAutomationPointTransient(touchDownTrack, automationLane, automationPoint, automationLane == 1 ? value * 2f - 1f : value); return true;
+                }
+                if (timelineMode && touchDownTrack >= 0 && timelineDragMode > 0 && timelineDragMode != 4 && Math.abs(deltaX) > dp(8) && Math.abs(deltaX) >= Math.abs(deltaY)) {
                     if (!timelineDragging) beginTimelineEdit();
                     timelineDragging = true;
                     int length = Math.max(1, engine.getArrangementLength()), start = engine.trackStart(touchDownTrack), end = engine.trackEnd(touchDownTrack), delta = Math.round(deltaX * length / timelineWidth(getWidth()));
@@ -768,8 +830,12 @@ public class MainActivity extends Activity {
                     else if (x < left + buttonW + gap + buttonW) ((MainActivity) getContext()).saveProject();
                     else if (x < left + buttonW * 3 + gap * 2) ((MainActivity) getContext()).showExportChooser();
                     else ((MainActivity) getContext()).exitApp();
-                } else if (x >= w - dp(236) && x < w - dp(132)) ((MainActivity) getContext()).saveProject();
-                else if (x >= w - dp(124)) ((MainActivity) getContext()).exitApp();
+                } else {
+                    float gap = dp(7), left = dp(20), buttonW = (w - dp(40) - gap * 2) / 3f;
+                    if (x < left + buttonW) ((MainActivity) getContext()).saveProject();
+                    else if (x < left + (buttonW + gap) * 2) togglePadCapture();
+                    else ((MainActivity) getContext()).exitApp();
+                }
                 return true;
             }
             if (padsMode) {
@@ -777,7 +843,7 @@ public class MainActivity extends Activity {
                 if (y >= dp(150) && y < dp(200) && x > w - dp(155)) { configuring = !configuring; invalidate(); return true; }
                 if (configuring && y >= dp(210) && y < dp(260)) { if (x < dp(100)) padDisplayMode = 0; else if (x < dp(182)) padDisplayMode = 1; else if (x < dp(270)) padDisplayMode = 2; prefs.edit().putInt("pad_display_mode", padDisplayMode).apply(); invalidate(); return true; }
                 float gap = dp(12), left = dp(20), cellW = (w - dp(40) - gap) / 2f, gridTop = configuring ? dp(264) : dp(228), cellH = padCellHeight(h, gridTop, gap);
-                if (y >= gridTop && y < gridTop + 4 * (cellH + gap)) { int col = (int) ((x - left) / (cellW + gap)), row = (int) ((y - gridTop) / (cellH + gap)); if (col >= 0 && col < 2 && row >= 0 && row < 4) { int pad = row * 2 + col; if (configuring) ((MainActivity) getContext()).showPadChooser(pad); else { pads.playPad(pad); lastPad = pad; lastPadAt = System.currentTimeMillis(); } invalidate(); } }
+                if (y >= gridTop && y < gridTop + 4 * (cellH + gap)) { int col = (int) ((x - left) / (cellW + gap)), row = (int) ((y - gridTop) / (cellH + gap)); if (col >= 0 && col < 2 && row >= 0 && row < 4) { int pad = row * 2 + col; if (configuring) ((MainActivity) getContext()).showPadChooser(pad); else playCapturedPad(pad); lastPad = pad; lastPadAt = System.currentTimeMillis(); invalidate(); } }
                 return true;
             }
             if (timelineMode) {

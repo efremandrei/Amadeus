@@ -45,6 +45,10 @@ Amadeus is a loop-first Android music sketchpad. Record a sound, let it repeat, 
 - Automation lanes for volume, pan, reverb, and echo across each arrangement block
 - Direct microphone recording into Sound Pads
 - Importable downloadable sound-pack manifests in plain text or JSON format
+- ZIP sound packs with embedded WAV/MP3/AAC samples and optional HTTPS download by URL
+- Pad performance capture that places each trigger as an editable timeline clip and includes it in playback/export
+- Loop regions repeat throughout the selected arrangement length, up to 16 loop bars
+- Editable V/P/reverb/echo timeline lanes and undo/redo history restored with the saved project
 
 ## Build
 
